@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>EDM Drop Hand Conductor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0a1a;
+    --ink:#221a3d;
+    --ink-2:#2c2350;
+    --outline:#0a0716;
+    --text:#fdf6ee;
+    --muted:#c3b8e6;
+    --accent:#ffcf56;   /* piano / primary */
+    --accent-2:#6be7ff; /* arpeggio */
+    --pink:#ff6fa5;     /* drop fx */
+    --mint:#7af5c4;     /* solo / positive */
+  }
+  *{box-sizing:border-box;}
+  /* Pixelify Sans is cute but its "C"/digit glyphs blur together below ~20px, so it's
+     reserved for large, short, celebratory text (title, big chord name) via .pixel-text.
+     Everything dense/functional uses a normal legible face — the chunky borders, hard
+     offset shadows and candy palette carry the "8-bit cute" personality instead. */
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);height:100%;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:600;
+    overscroll-behavior:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+  /* Phone browsers otherwise fight the app with their own gestures: pinch-zoom,
+     pull-to-refresh, double-tap-zoom and long-press text selection all read as
+     "jank" during a hand-tracking session even though they're not real lag. */
+  #app{position:fixed;inset:0;-webkit-user-select:none;user-select:none;}
+  select,input{-webkit-user-select:auto;user-select:auto;}
+  .pixel-text{font-family:"Pixelify Sans",-apple-system,sans-serif;}
+
+  /* ---------- Cute-pixel panel primitive: solid chrome + hard offset shadow ---------- */
+  .glass{
+    background:var(--ink);
+    border:3px solid var(--outline);
+    border-radius:14px;
+    box-shadow:4px 4px 0 var(--outline), 0 10px 26px rgba(0,0,0,.4);
+  }
+
+  .video-wrap{position:fixed;inset:0;background:#000;overflow:hidden;}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;pointer-events:none;}
+  canvas{position:absolute;inset:0;width:100%;height:100%;z-index:2;}
+
+  .status-dot{display:inline-block;width:9px;height:9px;border-radius:3px;background:#ff5d7a;
+    margin-right:6px;border:2px solid var(--outline);}
+  .status-dot.live{background:var(--mint);}
+
+  .title-pill{position:absolute;top:calc(16px + env(safe-area-inset-top, 0px));left:calc(16px + env(safe-area-inset-left, 0px));z-index:6;border-radius:12px;
+    padding:8px 14px;font-size:.85rem;font-weight:700;letter-spacing:.02em;color:var(--accent);
+    display:flex;align-items:center;gap:7px;}
+
+  .icon-btn{width:40px;height:40px;border-radius:12px;cursor:pointer;
+    background:var(--ink);color:var(--text);font-size:1rem;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    border:3px solid var(--outline);box-shadow:3px 3px 0 var(--outline);
+    transition:transform .06s, box-shadow .06s;}
+  .icon-btn:hover{color:var(--accent);}
+  .icon-btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--outline);}
+
+  #infoBtn{position:absolute;top:calc(16px + env(safe-area-inset-top, 0px));right:calc(16px + env(safe-area-inset-right, 0px));z-index:6;}
+
+  .tiktok-caption{
+    position:absolute;left:50%;bottom:15%;
+    transform:translateX(-50%);
+    z-index:5;
+    font-family:"Pixelify Sans",sans-serif;
+    font-weight:700;
+    font-size:clamp(28px, 7.5vw, 58px);
+    color:var(--accent);
+    text-align:center;
+    line-height:1.1;
+    letter-spacing:.02em;
+    text-shadow:
+      -3px -3px 0 var(--outline), 3px -3px 0 var(--outline), -3px 3px 0 var(--outline), 3px 3px 0 var(--outline),
+      6px 6px 0 rgba(0,0,0,.35);
+    opacity:0;
+    pointer-events:none;
+    white-space:nowrap;
+    max-width:94%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    transition:opacity .15s ease;
+  }
+  .tiktok-caption.visible{ opacity:1; }
+  @keyframes captionPop{
+    0%{ transform:translateX(-50%) scale(0.65) rotate(-3deg); }
+    55%{ transform:translateX(-50%) scale(1.12) rotate(2deg); }
+    100%{ transform:translateX(-50%) scale(1) rotate(0); }
+  }
+  .tiktok-caption.pop{ animation: captionPop .24s cubic-bezier(.34,1.56,.64,1); }
+
+  /* ---------- Bottom dock (zócalo) ---------- */
+  .dock{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:6;
+    padding:12px 16px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;
+    max-width:calc(100vw - 24px);}
+  .dock-group{display:flex;align-items:center;gap:8px;}
+  .dock-sep{width:3px;height:28px;background:var(--outline);border-radius:2px;}
+
+  select,button{font-family:inherit;font-weight:600;}
+  select{background:var(--ink-2);color:var(--text);border:3px solid var(--outline);
+    border-radius:10px;padding:6px 7px;font-size:.86rem;cursor:pointer;
+    box-shadow:2px 2px 0 var(--outline);}
+  select:hover{color:var(--accent);}
+  button{cursor:pointer;transition:transform .06s, box-shadow .06s;}
+
+  .dock-btn{background:var(--ink-2);color:var(--text);border:3px solid var(--outline);
+    border-radius:10px;padding:8px 12px;font-size:.82rem;white-space:nowrap;
+    box-shadow:3px 3px 0 var(--outline);}
+  .dock-btn:hover{color:var(--accent);}
+  .dock-btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--outline);}
+  .dock-btn.primary{background:var(--accent);color:var(--outline);font-weight:700;}
+  .dock-btn.small{padding:7px 9px;font-size:.8rem;}
+
+  .dock-status{font-size:.8rem;color:var(--muted);white-space:nowrap;}
+  .dock-hands{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+
+  .mini-meter{display:flex;flex-direction:column;gap:4px;width:84px;}
+  .mini-meter-label{display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);}
+  #arpTag.on{color:var(--accent-2);}
+  #fxTag.on{color:var(--pink);}
+  .mini-track{height:9px;border-radius:5px;background:var(--ink-2);border:2px solid var(--outline);
+    overflow:hidden;padding:1px;}
+  .mini-fill{height:100%;width:0%;border-radius:3px;
+    background:repeating-linear-gradient(90deg, var(--accent-2) 0 5px, #48c9e0 5px 6px);
+    transition:width .08s linear;}
+  #fxBar{background:repeating-linear-gradient(90deg, var(--pink) 0 5px, #e0507f 5px 6px);}
+
+  .drum-name{font-size:.76rem;font-weight:700;min-width:92px;text-align:center;cursor:pointer;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s;}
+  .drum-name:hover{color:var(--accent);}
+  .drum-name.phase-drop{color:var(--pink);animation:dropPulse 1s ease-in-out infinite;}
+  @keyframes dropPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+  input[type="range"]{width:70px;accent-color:var(--accent);height:10px;}
+
+  /* ---------- Info panel (reference / status, tucked away by default) ---------- */
+  .info-panel{position:absolute;top:calc(66px + env(safe-area-inset-top, 0px));right:calc(16px + env(safe-area-inset-right, 0px));z-index:7;width:300px;max-width:calc(100vw - 32px);
+    max-height:calc(100vh - 150px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));overflow-y:auto;border-radius:14px;padding:16px;
+    display:flex;flex-direction:column;gap:14px;-webkit-user-select:text;user-select:text;}
+  .info-panel-head{display:flex;justify-content:space-between;align-items:center;}
+  .info-panel-head h2, .info-panel > h2{font-size:.9rem;margin:0;font-weight:700;color:var(--accent);}
+  .info-panel > h2{padding-top:4px;border-top:2px dashed var(--ink-2);}
+
+  .settings-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .settings-row select{flex:1;min-width:0;}
+
+  .chord-display{text-align:center;padding:12px 8px;border-radius:10px;background:var(--ink-2);
+    border:2px solid var(--outline);}
+  .degree-label{font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+  .chord-name{font-size:1.6rem;font-weight:700;color:var(--accent);margin:4px 0 2px;min-height:2rem;}
+  .chord-notes{font-size:.82rem;color:var(--accent-2);min-height:1.1rem;}
+  .finger-count{font-size:.7rem;color:var(--muted);margin-top:5px;word-break:break-word;}
+
+  .scale-table{display:flex;flex-direction:column;gap:5px;font-size:.86rem;}
+  .scale-row{display:flex;justify-content:space-between;padding:6px 8px;border-radius:8px;
+    background:var(--ink-2);color:var(--muted);border:2px solid var(--outline);}
+  .scale-row.active{background:var(--accent);color:var(--outline);font-weight:700;}
+  .scale-row .deg{width:22px;text-align:center;font-weight:700;opacity:.8;}
+
+  .hint{font-size:.8rem;color:var(--muted);line-height:1.65;}
+  .hint b{color:var(--accent);}
+
+  .drum-gallery{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .drum-chip{background:var(--ink-2);border:3px solid var(--outline);border-radius:10px;
+    padding:8px 10px;text-align:left;cursor:pointer;font-size:.82rem;color:var(--text);
+    font-family:inherit;font-weight:600;box-shadow:2px 2px 0 var(--outline);
+    transition:transform .06s, box-shadow .06s;}
+  .drum-chip:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--outline);}
+  .drum-chip .bpm{display:block;color:var(--muted);font-size:.72rem;margin-top:2px;}
+  .drum-chip.active{background:var(--accent);color:var(--outline);border-color:var(--outline);}
+  .drum-chip.active .bpm{color:var(--outline);opacity:.75;}
+  .drum-chip.playing{box-shadow:2px 2px 0 var(--mint);}
+
+  .error-box{position:absolute;top:calc(16px + env(safe-area-inset-top, 0px));left:50%;transform:translateX(-50%);z-index:9;
+    background:#4a1530;border:3px solid var(--outline);color:#ffd9ea;
+    padding:11px 16px;border-radius:12px;font-size:.8rem;max-width:min(520px, calc(100vw - 32px));
+    text-align:center;box-shadow:4px 4px 0 var(--outline);}
+
+  footer{font-size:.72rem;color:var(--muted);line-height:1.5;padding-top:4px;border-top:2px dashed var(--ink-2);}
+
+  @media (max-width:640px){
+    .dock{gap:8px;padding:9px 10px;}
+    .mini-meter{width:58px;}
+    input[type="range"]{width:52px;}
+    .drum-name{min-width:64px;font-size:.76rem;}
+    select{font-size:.76rem;padding:5px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="video-wrap">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="overlay"></canvas>
+
+    <div class="title-pill glass pixel-text">🎹 <span>Drop Conductor</span></div>
+    <button id="infoBtn" class="icon-btn glass" aria-label="Info">ⓘ</button>
+
+    <div id="errorBox" style="display:none" class="error-box"></div>
+
+    <div class="tiktok-caption pixel-text" id="tiktokCaption"></div>
+
+    <div id="infoPanel" class="info-panel glass" style="display:none">
+      <div class="info-panel-head">
+        <h2>Configuración</h2>
+        <button id="infoCloseBtn" class="icon-btn" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div class="settings-row">
+        <select id="rootSelect" aria-label="Tonalidad"></select>
+        <select id="octaveSelect" aria-label="Octava">
+          <option value="2">Grave</option>
+          <option value="3" selected>Media</option>
+          <option value="4">Aguda</option>
+        </select>
+        <select id="soundSelect" aria-label="Sonido">
+          <option value="synth" selected>Synth EDM</option>
+          <option value="piano">Piano acústico</option>
+        </select>
+      </div>
+
+      <div class="settings-row">
+        <div class="mini-meter">
+          <div class="mini-meter-label"><span id="arpTag">Arpegio</span><span id="arpValue">0%</span></div>
+          <div class="mini-track"><div class="mini-fill" id="arpBar"></div></div>
+        </div>
+        <div class="mini-meter">
+          <div class="mini-meter-label"><span id="fxTag">Drop</span><span id="fxValue">0%</span></div>
+          <div class="mini-track"><div class="mini-fill" id="fxBar"></div></div>
+        </div>
+      </div>
+
+      <div class="settings-row">
+        <button id="drumToggleBtn" class="dock-btn small">▶</button>
+        <span id="dockDrumName" class="drum-name">Pop Directo</span>
+        <input type="range" id="drumVolume" min="-40" max="6" value="-5" aria-label="Volumen de batería">
+      </div>
+
+      <div class="settings-row">
+        <button id="progToggleBtn" class="dock-btn small">▶</button>
+        <span id="dockProgName" class="drum-name">Estilo Levels</span>
+      </div>
+
+      <h2>Cómo tocar</h2>
+
+      <div class="chord-display">
+        <div class="degree-label" id="degreeLabel">Sin gesto</div>
+        <div class="chord-name pixel-text" id="chordName">—</div>
+        <div class="chord-notes" id="chordNotes"></div>
+        <div class="finger-count" id="fingerCount">0 dedos detectados</div>
+      </div>
+
+      <div class="scale-table" id="scaleTable"></div>
+
+      <div class="hint">
+        Escala <b>menor natural</b> (con V y VII prestados de la menor armónica
+        para más tensión/resolución) — la base real de los drops de EDM/progressive
+        house (Levels, Titanium, Wake Me Up son todos en menor). Los roles son
+        fijos por posición en pantalla, no por forma de la mano: <b>mano derecha
+        = piano</b>, <b>mano izquierda = efectos</b>.<br><br>
+        <b>Mano derecha:</b> 1-4 dedos → acordes i a iv. 5 dedos con la palma
+        de frente a la cámara → V; 5 dedos rotando la muñeca para mostrar el
+        <b>dorso</b> de la mano → VI (el único modo de sacar un 6º grado con
+        5 dedos). Mantené el gesto un instante para que dispare (evita falsos
+        cambios al mover la mano). Movela en círculos manteniendo el mismo
+        número de dedos para que un arpegio suave del acorde vaya subiendo de
+        volumen — cuanto más girás, más presente. Cerrar el puño <b>dispara un
+        chorus completo</b>: la melodía generativa (solo de synth) y la
+        progresión de acordes elegida en la galería arrancan juntas — melodía
+        + armonía, 8 compases a tempo, nivel épico. Es una capa de fondo, no un
+        modo: podés seguir mostrando dedos y tocando acordes normalmente
+        mientras el chorus sigue sonando. Se apaga solo a los 8 compases, o
+        antes si bajás la mano fuera de cuadro.<br><br>
+        <b>Mano izquierda:</b> arma un <b>drop</b> estilo progresivo/EDM con tres
+        gestos físicamente distintos — <b>rotá</b> la muñeca desde donde apareció
+        la mano para un filtro riser + whoosh + distorsión (tensión); <b>subila
+        por encima de tu mano derecha</b> (se mide relativo a la otra mano, no a
+        una altura fija) para un eco más grande; <b>paneala de lado a lado</b>
+        con la palma de frente a la cámara para abrir un reverb enorme. Bajala
+        del cuadro para apagar todo.<br><br>
+        Tocá el nombre de la batería (arriba, en Configuración) para elegir un patrón — tiene un
+        corte automático cada 4 compases, arranca con 20s de <b>drop</b> intenso
+        (sub + shaker) y sigue con 16 compases de ritmo puro antes de repetir.
+        Tocá el nombre de la progresión para elegir un drop de piano clásico de
+        EDM (i-VI-III-VII y variantes) y escucharlo en loop.
+      </div>
+
+      <footer>MediaPipe HandLandmarker (Tasks Vision, GPU) para el tracking · Tone.js con samples de piano Salamander para el audio. Todo corre localmente en tu navegador; el video no se envía a ningún servidor.</footer>
+    </div>
+
+    <!-- hidden gallery: selection UI lives here, opened from the drum name in the dock -->
+    <div id="drumGalleryPanel" class="info-panel glass" style="display:none">
+      <div class="info-panel-head">
+        <h2>Batería (EDM progresivo, 95-115 BPM)</h2>
+        <button id="drumGalleryCloseBtn" class="icon-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="drum-gallery" id="drumGallery"></div>
+    </div>
+
+    <div id="progGalleryPanel" class="info-panel glass" style="display:none">
+      <div class="info-panel-head">
+        <h2>Drops de piano (progresiones EDM)</h2>
+        <button id="progGalleryCloseBtn" class="icon-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="drum-gallery" id="progGallery"></div>
+    </div>
+
+    <div class="dock glass">
+      <div class="dock-group">
+        <button id="startBtn" class="dock-btn primary">▶ Iniciar cámara</button>
+        <span class="dock-status"><span id="statusDot" class="status-dot"></span><span id="statusText">Cámara apagada</span></span>
+        <span class="dock-hands" id="handsCount">0 manos</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js" crossorigin="anonymous"></script>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Music theory ----------
+  // Natural minor, harmonized — the actual backbone of EDM/progressive-house piano
+  // drops (Levels, Titanium, Wake Me Up... all minor-key). V and VII borrow their
+  // major third from harmonic minor (the classic "raised leading tone" move) for a
+  // stronger, more cadential pull than plain natural-minor harmony gives — that's
+  // what makes a EDM progression feel like it's "resolving" instead of just modal.
+  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const SCALE_OFFSETS = [0,2,3,5,7,8,10]; // natural minor scale-degree roots
+  const DEGREES = [
+    { roman:"i",   quality:"m7",    intervals:[0,3,7,10], suffix:"m7"   },
+    { roman:"ii°", quality:"m7b5",  intervals:[0,3,6,10], suffix:"m7♭5" },
+    { roman:"III", quality:"maj7",  intervals:[0,4,7,11], suffix:"maj7" },
+    { roman:"iv",  quality:"m7",    intervals:[0,3,7,10], suffix:"m7"   },
+    { roman:"V",   quality:"7",     intervals:[0,4,7,10], suffix:"7"    },
+    { roman:"VI",  quality:"maj7",  intervals:[0,4,7,11], suffix:"maj7" },
+    { roman:"VII", quality:"7",     intervals:[0,4,7,10], suffix:"7"    },
+  ];
+
+  function midiToNoteName(midi){
+    const name = NOTE_NAMES[midi % 12];
+    const octave = Math.floor(midi/12) - 1;
+    return name + octave;
+  }
+
+  function buildChord(rootMidi, degreeIndex){
+    const deg = DEGREES[degreeIndex];
+    const degreeRoot = rootMidi + SCALE_OFFSETS[degreeIndex];
+    const chordTones = deg.intervals.map(i => degreeRoot + i);
+    // Add a bass note one octave below the root for a fuller "LH/RH" piano voicing
+    const withBass = [degreeRoot - 12, ...chordTones];
+    const rootName = NOTE_NAMES[degreeRoot % 12];
+    return {
+      name: rootName + deg.suffix,
+      roman: deg.roman,
+      notes: withBass.map(midiToNoteName),
+    };
+  }
+
+  // ---------- UI: key + octave selectors ----------
+  const rootSelect = document.getElementById("rootSelect");
+  NOTE_NAMES.forEach((n, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = n + " mayor";
+    if (n === "C") opt.selected = true;
+    rootSelect.appendChild(opt);
+  });
+
+  const octaveSelect = document.getElementById("octaveSelect");
+  const soundSelect = document.getElementById("soundSelect");
+
+  function currentRootMidi(){
+    const pc = parseInt(rootSelect.value, 10);
+    const octave = parseInt(octaveSelect.value, 10);
+    return (octave + 1) * 12 + pc; // MIDI formula: (octave+1)*12 + pitchclass
+  }
+
+  function renderScaleTable(){
+    const table = document.getElementById("scaleTable");
+    table.innerHTML = "";
+    const rootMidi = currentRootMidi();
+    DEGREES.forEach((d, i) => {
+      const chord = buildChord(rootMidi, i);
+      const row = document.createElement("div");
+      row.className = "scale-row";
+      row.id = "scaleRow" + i;
+      row.innerHTML = `<span class="deg">${i+1}</span><span>${d.roman}</span><span>${chord.name}</span>`;
+      table.appendChild(row);
+    });
+  }
+  renderScaleTable();
+  rootSelect.addEventListener("change", renderScaleTable);
+  octaveSelect.addEventListener("change", renderScaleTable);
+
+  function highlightDegree(idx){
+    for (let i=0;i<7;i++){
+      const row = document.getElementById("scaleRow"+i);
+      if (row) row.classList.toggle("active", i === idx);
+    }
+  }
+
+  // ---------- Audio (Tone.js) ----------
+  let synth = null;
+  let pianoSampler = null;
+  let pianoLoaded = false;
+  let activeVoices = [];
+
+  // Single master limiter everything routes through instead of toDestination()
+  // directly — with drums, piano/pad, arp, solo, reverb and echo all summing
+  // together, peaks were pushing well past 0dBFS (hard digital clipping/crackle).
+  // This catches that without needing to constantly re-balance every layer.
+  let masterLimiter = null;
+  function ensureMasterBus(){
+    if (!masterLimiter) masterLimiter = new Tone.Limiter(-1).toDestination();
+    return masterLimiter;
+  }
+
+  // Shared effects chain, driven by the FX (left) hand through three PHYSICALLY
+  // distinct motions, each with its own clearly different sonic character:
+  //   instrument(s) -> riserFilter -> distortion -> reverb(dynamic space) -> destination
+  //                                        \-> echoSendGain -> echoDelay -> destination
+  // 1) TWIST the wrist from where the hand appeared: a rising highpass sweep +
+  //    riser whoosh + distortion grit — tension building toward a drop.
+  // 2) RAISE the hand higher on screen: a bigger dotted-8th echo throw — the
+  //    classic "hands up" gesture.
+  // 3) PULL the hand back from the camera (it looks smaller): the reverb opens
+  //    into a huge cavernous wash; push it close again and it snaps back dry.
+  // Twist/height/distance are three independent physical axes, so they never
+  // fight each other or feel redundant the way three shape-based gestures did.
+  let riserFilter = null;
+  let distortionNode = null;
+  let reverbNode = null;
+  let riserNoise = null, riserNoiseFilter = null, riserNoiseGain = null;
+  let echoDelay = null, echoSendGain = null;
+  let sharedChorus = null; // one Chorus shared by the pad and the main synth instead of one each
+
+  function ensureEffectsChain(){
+    if (!distortionNode){
+      riserFilter = new Tone.Filter({ frequency: 20, type: "highpass", rolloff: -12 });
+      distortionNode = new Tone.Distortion({ distortion: 0, wet: 0 });
+      // Shorter decay than before (2.4s -> 1.8s): convolution-reverb cost scales
+      // with tail length, and this was one of the biggest contributors to the
+      // audio-thread stutter under load.
+      reverbNode = new Tone.Reverb({ decay: 1.8, wet: 0.18 }).connect(ensureMasterBus());
+      riserFilter.connect(distortionNode);
+      distortionNode.connect(reverbNode);
+      sharedChorus = new Tone.Chorus(3, 2, 0.38).start();
+      sharedChorus.connect(riserFilter);
+
+      // Riser noise: a continuously-running whoosh whose brightness/volume rides
+      // along with the same "drop" intensity — silent (gain 0) until engaged.
+      riserNoiseFilter = new Tone.Filter({ frequency: 200, type: "bandpass", Q: 1 });
+      riserNoiseGain = new Tone.Gain(0).connect(reverbNode);
+      riserNoise = new Tone.Noise("white");
+      riserNoise.connect(riserNoiseFilter);
+      riserNoiseFilter.connect(riserNoiseGain);
+      riserNoise.start();
+
+      // Echo send: a parallel tap (not in series), so it adds on top of the dry
+      // signal rather than replacing it.
+      echoDelay = new Tone.FeedbackDelay("8n.", 0.32);
+      echoDelay.wet.value = 1;
+      echoDelay.connect(ensureMasterBus());
+      echoSendGain = new Tone.Gain(0).connect(echoDelay);
+      distortionNode.connect(echoSendGain);
+    }
+    return riserFilter;
+  }
+
+  // Warm, slow-attack synth pad that plays softly under whatever instrument is
+  // selected, for a more lush/ambient "synth" underlay — shares the same fx chain,
+  // so it swells into the drop right along with everything else.
+  let padSynth = null;
+  let activePadVoices = [];
+  function ensurePad(){
+    if (padSynth) return padSynth;
+    ensureEffectsChain(); // for sharedChorus
+    padSynth = new Tone.PolySynth(Tone.Synth, {
+      maxPolyphony: 6,
+      oscillator: { type: "sine" },
+      envelope: { attack: 0.9, decay: 0.6, sustain: 0.75, release: 3.2 },
+    });
+    padSynth.volume.value = -16;
+    padSynth.connect(sharedChorus);
+    return padSynth;
+  }
+
+  function ensureInstrument(){
+    const fx = ensureEffectsChain();
+    if (soundSelect.value === "piano"){
+      if (!pianoSampler){
+        pianoSampler = new Tone.Sampler({
+          urls: {
+            A0:"A0.mp3", C1:"C1.mp3", "D#1":"Ds1.mp3", "F#1":"Fs1.mp3",
+            A1:"A1.mp3", C2:"C2.mp3", "D#2":"Ds2.mp3", "F#2":"Fs2.mp3",
+            A2:"A2.mp3", C3:"C3.mp3", "D#3":"Ds3.mp3", "F#3":"Fs3.mp3",
+            A3:"A3.mp3", C4:"C4.mp3", "D#4":"Ds4.mp3", "F#4":"Fs4.mp3",
+            A4:"A4.mp3", C5:"C5.mp3", "D#5":"Ds5.mp3", "F#5":"Fs5.mp3",
+            A5:"A5.mp3", C6:"C6.mp3", "D#6":"Ds6.mp3", "F#6":"Fs6.mp3",
+            A6:"A6.mp3", C7:"C7.mp3",
+          },
+          attack: 0.09, // softens the sample's natural onset — less percussive "pum"
+          release: 1.4,
+          baseUrl: "https://tonejs.github.io/audio/salamander/",
+          onload: () => { pianoLoaded = true; },
+          onerror: (err) => { showError("No se pudieron cargar los samples de piano: " + (err && err.message ? err.message : String(err)) + ". Probá con \"Synth cálido\"."); },
+        }).connect(fx);
+      }
+      return pianoSampler;
+    } else {
+      if (!synth){
+        // EDM pluck synth: a detuned supersaw stack (fatsawtooth) with its own
+        // filter envelope, so every single note attack sweeps the cutoff open
+        // and settles — a small "riser" baked into each chord itself, not just
+        // the drop-fx hand. This is the genre's actual "big room piano" sound.
+        // count:2 instead of 3 — this is polyphonic (up to 5 voices for a chord),
+        // so each unit here is really 2x that many oscillators; the shared
+        // chorus adds most of the remaining "width" much more cheaply than a
+        // 3rd detuned oscillator per voice would.
+        synth = new Tone.PolySynth(Tone.MonoSynth, {
+          maxPolyphony: 6,
+          oscillator: { type: "fatsawtooth", count: 2, spread: 25 },
+          envelope: { attack: 0.008, decay: 0.55, sustain: 0.55, release: 1.2 },
+          filterEnvelope: { attack: 0.012, decay: 0.65, sustain: 0.25, release: 1, baseFrequency: 280, octaves: 4.5, exponent: 2 },
+          filter: { Q: 1.1, type: "lowpass", rolloff: -12 },
+        });
+        synth.volume.value = -4;
+        synth.connect(sharedChorus);
+      }
+      return synth;
+    }
+  }
+
+  function ensureTransportRunning(){
+    if (Tone.Transport.state !== "started") Tone.Transport.start();
+  }
+
+  // ---------- Drum machine: 10 progressive/EDM patterns (95-115 BPM), synthesized (no samples) ----------
+  // Each pattern is a 16-step grid (one bar of 16th notes @ 4/4). Values are the step
+  // indices (0-15) that trigger a hit. "Cortes" (fills) are derived automatically: every
+  // 4th bar, the last beat gets a snare roll and the hats/claps drop out under it.
+  // Four-on-the-floor kicks + off-beat open hats throughout — the genre's signature pulse.
+  const DRUM_PATTERNS = [
+    { name: "Progressive Drive",  bpm: 112, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[2,6,10,14], clap:[4,12] },
+    { name: "Big Room Pulse",     bpm: 115, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[2,6,10,14],          hatOpen:[0,4,8,12],  clap:[4,12] },
+    { name: "Deep House Groove",  bpm: 115, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[6,14],      clap:[] },
+    { name: "Future Rave",        bpm: 115, kick:[0,3,4,8,11,12],  snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[2,10],      clap:[4,12] },
+    { name: "Melodic Techno",     bpm: 110, kick:[0,4,8,12],       snare:[],       hatClosed:[2,6,10,14],          hatOpen:[0,8],       clap:[4,12] },
+    { name: "Trance Gate",        bpm: 115, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], hatOpen:[], clap:[4,12] },
+    { name: "Tropical House",     bpm: 100, kick:[0,6,8,11],       snare:[4,12],   hatClosed:[2,6,10,14],          hatOpen:[],          clap:[4,12] },
+    { name: "Progressive Anthem", bpm: 114, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[14],        clap:[4,12] },
+    { name: "Club Stomper",       bpm: 113, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[4,12],      clap:[4,12] },
+    { name: "Festival Build",     bpm: 115, kick:[0,4,8,12],       snare:[4,8,12], hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[2,6,10,14], clap:[4,8,12] },
+  ];
+
+  function deriveFill(p){
+    const keepEarly = arr => arr.filter(s => s < 12);
+    return {
+      kick: p.kick,
+      snare: [...keepEarly(p.snare), 12, 13, 14, 15],
+      hatClosed: keepEarly(p.hatClosed),
+      hatOpen: keepEarly(p.hatOpen),
+      clap: keepEarly(p.clap),
+    };
+  }
+
+  // The "ritmo puro" section: same kick pulse, everything else stripped back to
+  // the essentials — no ride/sub layers, plain backbeat, quarter-note hats. A
+  // deliberate come-down from the drop's density rather than a full pattern.
+  function deriveGroove(p){
+    return { kick: p.kick, snare: [4, 12], hatClosed: [0, 4, 8, 12], hatOpen: [], clap: [] };
+  }
+
+  const RIDE_STEPS = [2, 6, 10, 14]; // shaker/ride texture, drop section only
+
+  // NOTE on a real bug this fixes: hatClosed and hatOpen used to share ONE
+  // MetalSynth. Several patterns trigger both on the same 16th-note step, and
+  // Tone.js throws when you call triggerAttackRelease twice at the identical
+  // scheduled time on the same voice — that silently killed those patterns.
+  // Closed and open hats now each get their own synth, so they can never collide.
+  let drumBus = null, kickSynth = null, snareSynth = null, clapSynth = null;
+  let hatClosedSynth = null, hatOpenSynth = null;
+  let subSynth = null, rideSynth = null;
+  let impactNoise = null, impactKick = null;
+
+  function ensureDrumKit(){
+    if (drumBus) return;
+    ensureEffectsChain(); // so we can reuse reverbNode instead of a 2nd convolution reverb
+    drumBus = new Tone.Volume(parseFloat(drumVolumeEl.value)).connect(ensureMasterBus());
+
+    kickSynth = new Tone.MembraneSynth({
+      pitchDecay: 0.05, octaves: 6,
+      envelope: { attack: 0.001, decay: 0.4, sustain: 0 },
+    }).connect(drumBus);
+    kickSynth.volume.value = 1;
+
+    const snareFilter = new Tone.Filter(1700, "bandpass").connect(drumBus);
+    snareSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.2, sustain: 0 },
+    }).connect(snareFilter);
+    snareSynth.volume.value = 0;
+
+    const clapFilter = new Tone.Filter(1200, "bandpass").connect(drumBus);
+    clapSynth = new Tone.NoiseSynth({
+      noise: { type: "pink" },
+      envelope: { attack: 0.001, decay: 0.25, sustain: 0 },
+    }).connect(clapFilter);
+    clapSynth.volume.value = 0;
+
+    // Filtered noise instead of MetalSynth for the hats — MetalSynth's FM
+    // synthesis (many partials) is one of the heaviest voices in Tone.js, and
+    // hats retrigger constantly (every 16th note in some patterns). Noise
+    // through a highpass gives a perfectly convincing hat at a fraction of the
+    // CPU cost — this was a big part of the audio stuttering.
+    const hatClosedFilter = new Tone.Filter(8500, "highpass").connect(drumBus);
+    hatClosedSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.05, sustain: 0 },
+    }).connect(hatClosedFilter);
+    hatClosedSynth.volume.value = 2;
+
+    const hatOpenFilter = new Tone.Filter(7000, "highpass").connect(drumBus);
+    hatOpenSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.22, sustain: 0 },
+    }).connect(hatOpenFilter);
+    hatOpenSynth.volume.value = 0;
+
+    // Extra layers that only play during the drop, for a fuller/"immersive" section:
+    // a low pumping sub under every kick, and a bright shaker/ride texture.
+    subSynth = new Tone.MonoSynth({
+      oscillator: { type: "sine" },
+      envelope: { attack: 0.005, decay: 0.55, sustain: 0.25, release: 0.4 },
+      filterEnvelope: { attack: 0.01, decay: 0.35, sustain: 0.15, baseFrequency: 70, octaves: 2.5 },
+    }).connect(drumBus);
+    subSynth.volume.value = 0;
+
+    const rideFilter = new Tone.Filter(6500, "highpass").connect(drumBus);
+    rideSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.1, sustain: 0 },
+    }).connect(rideFilter);
+    rideSynth.volume.value = -11;
+
+    // Impact hit: fires once at the very top of every drop section — a noise
+    // "crash" through the SAME shared reverb (not a second one) plus a doubled
+    // sub/kick. This one-shot is what actually makes it feel like a drop
+    // landing, not just a busier loop.
+    impactNoise = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 1.1, sustain: 0 },
+    }).connect(reverbNode);
+    impactNoise.volume.value = -3;
+
+    impactKick = new Tone.MembraneSynth({
+      pitchDecay: 0.08, octaves: 7,
+      envelope: { attack: 0.001, decay: 0.8, sustain: 0 },
+    }).connect(drumBus);
+    impactKick.volume.value = 2;
+  }
+
+  function triggerDropImpact(time){
+    impactNoise.triggerAttackRelease("2n", time);
+    impactKick.triggerAttackRelease("C1", "2n", time);
+    subSynth.triggerAttackRelease("C1", "2n", time, 1);
+  }
+
+  function triggerDrumStep(stepArrays, stepIdx, time, isDrop){
+    if (stepArrays.kick.includes(stepIdx)){
+      kickSynth.triggerAttackRelease("C1", "8n", time);
+      if (isDrop) subSynth.triggerAttackRelease("C1", "4n", time, 1);
+    }
+    if (stepArrays.snare.includes(stepIdx)) snareSynth.triggerAttackRelease("16n", time);
+    // Layer the clap under the snare during the drop for a bigger hit, but never
+    // trigger clapSynth twice on the same step (that's the exact bug above).
+    const wantsClap = stepArrays.clap.includes(stepIdx) || (isDrop && stepArrays.snare.includes(stepIdx));
+    if (wantsClap) clapSynth.triggerAttackRelease("16n", time);
+    if (stepArrays.hatClosed.includes(stepIdx)) hatClosedSynth.triggerAttackRelease("32n", time, 0.55);
+    if (stepArrays.hatOpen.includes(stepIdx)) hatOpenSynth.triggerAttackRelease("8n", time, 0.6);
+    if (isDrop && RIDE_STEPS.includes(stepIdx)) rideSynth.triggerAttackRelease("16n", time, 0.3);
+  }
+
+  let currentDrumIndex = 0;
+  let drumSeq = null;
+  let drumBarCounter = 0;
+  let drumPlaying = false;
+  let drumPhase = "drop"; // "drop" (intense, ~20s) <-> "groove" (16 bars, pure rhythm) — loops forever
+  let dropPhaseBars = 8;
+  let phaseJustChanged = true; // fires the impact hit exactly once per new drop section
+  const GROOVE_PHASE_BARS = 16;
+
+  function stopDrumSequence(){
+    if (drumSeq){ drumSeq.stop(0); drumSeq.dispose(); drumSeq = null; }
+  }
+
+  function startDrums(){
+    ensureDrumKit();
+    stopDrumSequence();
+    const pattern = DRUM_PATTERNS[currentDrumIndex];
+    const groove = deriveGroove(pattern);
+    const fillDrop = deriveFill(pattern);
+    const fillGroove = deriveFill(groove);
+
+    Tone.Transport.bpm.value = pattern.bpm;
+    const barSeconds = (60 / pattern.bpm) * 4;
+    dropPhaseBars = Math.max(4, Math.round(20 / barSeconds)); // ~20 real seconds, rounded to whole bars
+    drumPhase = "drop";
+    drumBarCounter = 0;
+    drumPlaying = true;
+    phaseJustChanged = true;
+    updateDrumPhaseUI();
+
+    drumSeq = new Tone.Sequence((time, stepIdx) => {
+      const isDrop = drumPhase === "drop";
+      if (stepIdx === 0 && phaseJustChanged && isDrop){
+        triggerDropImpact(time);
+        phaseJustChanged = false;
+      }
+      const base = isDrop ? pattern : groove;
+      const fillVariant = isDrop ? fillDrop : fillGroove;
+      const useFill = drumBarCounter % 4 === 3;
+      triggerDrumStep(useFill ? fillVariant : base, stepIdx, time, isDrop);
+      if (stepIdx === 15){
+        drumBarCounter++;
+        const phaseLen = isDrop ? dropPhaseBars : GROOVE_PHASE_BARS;
+        if (drumBarCounter >= phaseLen){
+          drumBarCounter = 0;
+          drumPhase = isDrop ? "groove" : "drop";
+          phaseJustChanged = true;
+          Tone.Draw.schedule(() => updateDrumPhaseUI(), time);
+        }
+      }
+    }, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], "16n");
+    drumSeq.start(0);
+    ensureTransportRunning();
+    drumPlaying = true;
+    updateDrumUI();
+  }
+
+  function stopDrums(){
+    stopDrumSequence();
+    drumPlaying = false;
+    updateDrumUI();
+    updateDrumPhaseUI();
+  }
+
+  function updateDrumPhaseUI(){
+    dockDrumNameEl.classList.toggle("phase-drop", drumPlaying && drumPhase === "drop");
+    dockDrumNameEl.title = drumPlaying ? (drumPhase === "drop" ? "Drop en curso" : "Ritmo puro") : "";
+  }
+
+  function selectDrumPattern(idx){
+    currentDrumIndex = idx;
+    Tone.Transport.bpm.value = DRUM_PATTERNS[idx].bpm;
+    if (drumPlaying) startDrums();
+    updateDrumUI();
+  }
+
+  const drumGalleryEl = document.getElementById("drumGallery");
+  const drumToggleBtn = document.getElementById("drumToggleBtn");
+  const drumVolumeEl = document.getElementById("drumVolume");
+  const dockDrumNameEl = document.getElementById("dockDrumName");
+
+  function updateDrumUI(){
+    DRUM_PATTERNS.forEach((_, i) => {
+      const chip = document.getElementById("drumChip" + i);
+      if (chip){
+        chip.classList.toggle("active", i === currentDrumIndex);
+        chip.classList.toggle("playing", i === currentDrumIndex && drumPlaying);
+      }
+    });
+    drumToggleBtn.textContent = drumPlaying ? "⏸" : "▶";
+    dockDrumNameEl.textContent = DRUM_PATTERNS[currentDrumIndex].name;
+  }
+
+  function renderDrumGallery(){
+    drumGalleryEl.innerHTML = "";
+    DRUM_PATTERNS.forEach((p, i) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "drum-chip";
+      chip.id = "drumChip" + i;
+      chip.innerHTML = `${p.name}<span class="bpm">${p.bpm} BPM</span>`;
+      chip.onclick = () => { selectDrumPattern(i); drumGalleryPanel.style.display = "none"; };
+      drumGalleryEl.appendChild(chip);
+    });
+    updateDrumUI();
+  }
+  renderDrumGallery();
+  Tone.Transport.bpm.value = DRUM_PATTERNS[currentDrumIndex].bpm;
+
+  drumToggleBtn.onclick = async () => {
+    if (!audioStarted){ await Tone.start(); audioStarted = true; }
+    if (drumPlaying) stopDrums(); else startDrums();
+  };
+
+  drumVolumeEl.addEventListener("input", () => {
+    ensureDrumKit();
+    drumBus.volume.value = parseFloat(drumVolumeEl.value);
+  });
+
+  // ---------- EDM drop piano progressions ----------
+  // Well-known progressive-house/EDM "drop" chord progressions, written as scale
+  // degrees (0=i..6=VII) over the harmonized minor scale above, so they reuse the
+  // exact same chord voicings/instrument as the hand-played chords. Minor key is
+  // the real backbone of this genre (Levels, Titanium, Wake Me Up — all minor).
+  // Each one loops as four rhythmic piano stabs per bar (the classic pumping
+  // EDM-drop piano pattern) — a quick way to actually hear what a "known" drop
+  // sounds like instead of only raw single chords.
+  const EDM_PROGRESSIONS = [
+    { name: "Estilo Levels",     degrees: [0,5,2,6] },  // i-VI-III-VII
+    { name: "Estilo Titanium",   degrees: [0,2,6,5] },  // i-III-VII-VI
+    { name: "Anthem Progresivo", degrees: [5,6,0,4] },  // VI-VII-i-V
+    { name: "Big Room Drop",     degrees: [3,5,0,4] },  // iv-VI-i-V
+    { name: "Emotional Rise",    degrees: [0,3,5,4] },  // i-iv-VI-V
+    { name: "Euphoric Build",    degrees: [5,3,0,4] },  // VI-iv-i-V
+    { name: "Melodic Sunset",    degrees: [1,4,0,3] },  // ii°-V-i-iv
+    { name: "Trance Classic",    degrees: [0,6,5,4] },  // i-VII-VI-V
+  ];
+
+  let progLoop = null;
+  let progPlaying = false;
+  let currentProgIndex = 0;
+  let progBeatCounter = 0;
+  let progChordIndex = 0;
+
+  function stopProgLoop(){
+    if (progLoop){ progLoop.stop(0); progLoop.dispose(); progLoop = null; }
+  }
+
+  function startProgression(){
+    ensureInstrument();
+    stopProgLoop();
+    progChordIndex = 0;
+    progBeatCounter = 0;
+    progLoop = new Tone.Loop((time) => {
+      const prog = EDM_PROGRESSIONS[currentProgIndex];
+      const degree = prog.degrees[progChordIndex];
+      const chord = buildChord(currentRootMidi(), degree);
+      const inst = ensureInstrument();
+      try { inst.triggerAttackRelease(chord.notes, "4n", time, 0.8); } catch(e){}
+      if (progBeatCounter === 0){
+        Tone.Draw.schedule(() => {
+          document.getElementById("degreeLabel").textContent = `Progresión · Grado ${degree + 1}`;
+          document.getElementById("chordName").textContent = chord.name;
+          document.getElementById("chordNotes").textContent = chord.notes.join("  ·  ");
+          setCaption(chord.name);
+          highlightDegree(degree);
+        }, time);
+      }
+      progBeatCounter = (progBeatCounter + 1) % 4;
+      if (progBeatCounter === 0) progChordIndex = (progChordIndex + 1) % prog.degrees.length;
+    }, "4n");
+    progLoop.start(0);
+    ensureTransportRunning();
+    progPlaying = true;
+    updateProgUI();
+  }
+
+  function stopProgression(){
+    stopProgLoop();
+    progPlaying = false;
+    updateProgUI();
+  }
+
+  function selectProgression(idx){
+    currentProgIndex = idx;
+    if (progPlaying) startProgression();
+    updateProgUI();
+  }
+
+  const progGalleryEl = document.getElementById("progGallery");
+  const progToggleBtn = document.getElementById("progToggleBtn");
+  const dockProgNameEl = document.getElementById("dockProgName");
+
+  function updateProgUI(){
+    EDM_PROGRESSIONS.forEach((_, i) => {
+      const chip = document.getElementById("progChip" + i);
+      if (chip){
+        chip.classList.toggle("active", i === currentProgIndex);
+        chip.classList.toggle("playing", i === currentProgIndex && progPlaying);
+      }
+    });
+    progToggleBtn.textContent = progPlaying ? "⏸" : "▶";
+    dockProgNameEl.textContent = EDM_PROGRESSIONS[currentProgIndex].name;
+  }
+
+  function renderProgGallery(){
+    progGalleryEl.innerHTML = "";
+    EDM_PROGRESSIONS.forEach((p, i) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "drum-chip";
+      chip.id = "progChip" + i;
+      const roman = p.degrees.map(d => DEGREES[d].roman).join("-");
+      chip.innerHTML = `${p.name}<span class="bpm">${roman}</span>`;
+      chip.onclick = () => { selectProgression(i); progGalleryPanel.style.display = "none"; };
+      progGalleryEl.appendChild(chip);
+    });
+    updateProgUI();
+  }
+  renderProgGallery();
+
+  progToggleBtn.onclick = async () => {
+    if (!audioStarted){ await Tone.start(); audioStarted = true; }
+    if (progPlaying) stopProgression(); else startProgression();
+  };
+
+  // ---------- Info / drum gallery / progression gallery panels (tucked away, opened on demand) ----------
+  const infoPanel = document.getElementById("infoPanel");
+  const infoBtn = document.getElementById("infoBtn");
+  const infoCloseBtn = document.getElementById("infoCloseBtn");
+  const drumGalleryPanel = document.getElementById("drumGalleryPanel");
+  const drumGalleryCloseBtn = document.getElementById("drumGalleryCloseBtn");
+  const progGalleryPanel = document.getElementById("progGalleryPanel");
+  const progGalleryCloseBtn = document.getElementById("progGalleryCloseBtn");
+
+  function togglePanel(panel, show){
+    panel.style.display = show ? "flex" : "none";
+  }
+  function closeAllPanels(){
+    togglePanel(infoPanel, false);
+    togglePanel(drumGalleryPanel, false);
+    togglePanel(progGalleryPanel, false);
+  }
+  infoBtn.onclick = () => {
+    const wasOpen = infoPanel.style.display !== "none";
+    closeAllPanels();
+    togglePanel(infoPanel, !wasOpen);
+  };
+  infoCloseBtn.onclick = () => togglePanel(infoPanel, false);
+  dockDrumNameEl.onclick = () => {
+    const wasOpen = drumGalleryPanel.style.display !== "none";
+    closeAllPanels();
+    togglePanel(drumGalleryPanel, !wasOpen);
+  };
+  drumGalleryCloseBtn.onclick = () => togglePanel(drumGalleryPanel, false);
+  dockProgNameEl.onclick = () => {
+    const wasOpen = progGalleryPanel.style.display !== "none";
+    closeAllPanels();
+    togglePanel(progGalleryPanel, !wasOpen);
+  };
+  progGalleryCloseBtn.onclick = () => togglePanel(progGalleryPanel, false);
+
+  // ---------- Drop FX control (the FX/left hand — always, by position) ----------
+  // Three PHYSICALLY independent motions, recalibrated from real testing:
+  //  - TWIST the wrist from wherever the hand first appeared: highpass sweep +
+  //    riser whoosh + distortion grit — tension building toward a drop.
+  //  - RAISE the hand above the CHORD hand's current height (relative to the
+  //    other hand, not a fixed point on screen — engages exactly when you lift
+  //    it past your other hand, not "whenever it happens to be low"): a
+  //    dotted-8th echo throw gets bigger.
+  //  - PAN the hand side to side with the palm facing the camera: the reverb
+  //    opens into a huge wash. Replaces the old "pull hand back" gesture, which
+  //    wasn't reliably detected.
+  const fxBar = document.getElementById("fxBar");
+  const fxValue = document.getElementById("fxValue");
+  const fxTag = document.getElementById("fxTag");
+
+  let lBaselineAngle = null;
+  let smoothedDrop = 0;
+  let smoothedEcho = 0;
+  let smoothedSpace = 0;
+  const DROP_ROTATION_RANGE_DEG = 55; // full rotation (either direction) = 100% build
+  const ECHO_HEIGHT_RANGE = 0.3; // how far above the chord hand counts as "full" echo
+  const REVERB_BASE_WET = 0.18, REVERB_MAX_WET = 0.75;
+
+  function angleDiffDeg(a, b){
+    let d = a - b;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    return d;
+  }
+
+  // fxInfo: analyzeHand() output for the FX hand. chordWristY: the chord hand's
+  // current wrist y (null if that hand isn't in frame). fxLateralIntensity: 0-1
+  // from detectLateralIntensity(fxMotionBuffer) — the pan gesture below.
+  function updateDropFx(fxInfo, active, chordWristY, fxLateralIntensity){
+    let rotationTarget = 0, echoTarget = 0, spaceTarget = 0;
+    if (active){
+      if (lBaselineAngle === null) lBaselineAngle = fxInfo.angleDeg;
+      const delta = Math.abs(angleDiffDeg(fxInfo.angleDeg, lBaselineAngle));
+      rotationTarget = Math.min(1, delta / DROP_ROTATION_RANGE_DEG);
+
+      // y grows downward, so "FX hand above the chord hand" means a SMALLER y.
+      // No chord hand in frame? Fall back to "above the top of the video" so
+      // the gesture still works solo.
+      const referenceY = chordWristY === null ? 1 : chordWristY;
+      const heightAboveChord = referenceY - fxInfo.wristY;
+      echoTarget = Math.max(0, Math.min(1, heightAboveChord / ECHO_HEIGHT_RANGE));
+
+      spaceTarget = fxLateralIntensity;
+    } else {
+      lBaselineAngle = null;
+    }
+    smoothedDrop += (rotationTarget - smoothedDrop) * 0.2;
+    smoothedEcho += (echoTarget - smoothedEcho) * 0.15;
+    smoothedSpace += (spaceTarget - smoothedSpace) * 0.12;
+    if (Math.abs(smoothedDrop) < 0.003) smoothedDrop = 0;
+    if (Math.abs(smoothedEcho) < 0.003) smoothedEcho = 0;
+    if (Math.abs(smoothedSpace) < 0.003) smoothedSpace = 0;
+
+    if (riserFilter){
+      // Exponential sweep: 20Hz (fully open) up to ~3.5kHz (thin/tense) at full build.
+      riserFilter.frequency.value = 20 * Math.pow(175, smoothedDrop);
+    }
+    if (riserNoiseGain){
+      riserNoiseGain.gain.value = smoothedDrop * 0.22;
+      riserNoiseFilter.frequency.value = 200 * Math.pow(25, smoothedDrop);
+    }
+    if (distortionNode){
+      distortionNode.distortion = smoothedDrop * 0.75;
+      distortionNode.wet.value = smoothedDrop; // wet is a Tone.Signal, not a plain settable prop
+    }
+    if (echoSendGain) echoSendGain.gain.value = smoothedEcho * 0.35;
+    if (reverbNode) reverbNode.wet.value = REVERB_BASE_WET + smoothedSpace * (REVERB_MAX_WET - REVERB_BASE_WET);
+
+    fxBar.style.width = (smoothedDrop * 100).toFixed(0) + "%";
+    fxValue.textContent = Math.round(smoothedDrop * 100) + "%";
+    fxTag.textContent = active ? "Mano FX activa" : "Drop inactivo";
+    fxTag.classList.toggle("on", active);
+  }
+
+  let currentDegree = -1; // -1 = silence
+  let audioStarted = false;
+  let arpSequence = null;
+
+  function stopAllVoices(){
+    const inst = soundSelect.value === "piano" ? pianoSampler : synth;
+    if (inst && activeVoices.length){
+      try { inst.triggerRelease(activeVoices, Tone.now()); } catch(e){}
+    }
+    activeVoices = [];
+    if (padSynth && activePadVoices.length){
+      try { padSynth.triggerRelease(activePadVoices, Tone.now()); } catch(e){}
+    }
+    activePadVoices = [];
+  }
+
+  function stopArpeggio(){
+    if (arpSequence){ arpSequence.stop(0); arpSequence.dispose(); arpSequence = null; }
+  }
+
+  // The arpeggio runs continuously underneath every held chord — it never
+  // switches on/off abruptly. Its audible level just follows arpIntensitySmoothed
+  // (updated every detection frame from how much the chord hand is circling),
+  // so it fades in and out smoothly and always feels like a natural companion to
+  // the sustained chord rather than a separate mode. See updateArpIntensity().
+  function startArpeggio(notes){
+    const inst = ensureInstrument();
+    arpSequence = new Tone.Sequence((time, idx) => {
+      if (arpIntensitySmoothed < 0.02) return; // inaudible — skip triggering entirely
+      try { inst.triggerAttackRelease(notes[idx], "8n", time, arpIntensitySmoothed); } catch(e){}
+    }, notes.map((_, idx) => idx), "8n");
+    arpSequence.start();
+    ensureTransportRunning();
+  }
+
+  // ---------- Generative solo (closed fist on the piano hand) ----------
+  // An algorithmic lead line — scale-locked random walk, not a fixed melody — so
+  // it never repeats the same way twice. Routed through its own echo plus the
+  // shared drop fx chain, so it inherits whatever riser/distortion the left hand
+  // is building at the same time: an "epic" synth solo that can also get swept
+  // up into the drop.
+  let leadSynth = null;
+  let leadDelay = null;
+  function ensureLead(){
+    if (leadSynth) return leadSynth;
+    const fx = ensureEffectsChain();
+    leadDelay = new Tone.FeedbackDelay("8n.", 0.4);
+    leadDelay.wet.value = 1;
+    leadDelay.connect(fx);
+    leadSynth = new Tone.PolySynth(Tone.MonoSynth, {
+      maxPolyphony: 4, // it's a single melodic line — only release tails ever overlap
+      oscillator: { type: "fatsawtooth", count: 2, spread: 20 },
+      envelope: { attack: 0.015, decay: 0.2, sustain: 0.5, release: 0.4 },
+      filterEnvelope: { attack: 0.02, decay: 0.3, sustain: 0.4, baseFrequency: 500, octaves: 3.5 },
+      portamento: 0.03,
+    });
+    leadSynth.volume.value = -5;
+    leadSynth.connect(fx);
+    leadSynth.connect(leadDelay);
+    return leadSynth;
+  }
+
+  // The solo is a background layer, not a mode: closing the fist FIRES it for a
+  // fixed 8-bar phrase (scheduled on the Transport, so it's tempo-accurate), and
+  // the chord hand goes right on playing chords normally the entire time — no
+  // lockout. It just stops on its own after 8 bars, or earlier if the camera stops.
+  let soloLoop = null;
+  let soloScalePos = 7; // index into an extended (>1 octave) scale walk, wraps 0-13
+  let soloActive = false;
+  let soloStopEventId = null;
+  let progAutoStartedBySolo = false; // so we only stop the harmony if WE started it
+  const SOLO_BARS = 8;
+  let handGoneSince = null; // debounced "hand left the frame" — cancels an active solo early
+  const HAND_GONE_CANCEL_MS = 200;
+
+  function stopSolo(){
+    if (soloLoop){ soloLoop.stop(0); soloLoop.dispose(); soloLoop = null; }
+    if (soloStopEventId !== null){ Tone.Transport.clear(soloStopEventId); soloStopEventId = null; }
+    soloActive = false;
+    if (progAutoStartedBySolo){
+      progAutoStartedBySolo = false;
+      if (progPlaying) stopProgression();
+    }
+  }
+
+  // Closing the fist is a full "chorus" moment, not just a bare melody: it fires
+  // the generative lead AND the currently-selected chord progression together —
+  // melody over harmony, both locked to the same 8-bar phrase — so it lands like
+  // an actual drop hitting, not a solo instrument noodling alone.
+  function triggerSolo(){
+    if (soloActive) return; // already running a phrase — let it finish before retriggering
+    soloActive = true;
+    const lead = ensureLead();
+    soloScalePos = 7;
+    soloLoop = new Tone.Loop((time) => {
+      if (Math.random() > 0.72) return; // rest sometimes so it breathes like a real solo
+      const step = [-2, -1, -1, 0, 1, 1, 2][Math.floor(Math.random() * 7)];
+      soloScalePos = Math.max(0, Math.min(13, soloScalePos + step));
+      const octaveShift = Math.floor(soloScalePos / 7);
+      const degree = soloScalePos % 7;
+      const midi = currentRootMidi() + 12 + SCALE_OFFSETS[degree] + 12 * octaveShift;
+      const dur = Math.random() < 0.2 ? "16n" : "8n";
+      try { lead.triggerAttackRelease(midiToNoteName(midi), dur, time, 0.65 + Math.random() * 0.3); } catch(e){}
+    }, "8n");
+    soloLoop.start(0);
+
+    if (progPlaying){
+      progAutoStartedBySolo = false; // already running by the user's own choice — leave it alone
+    } else {
+      progAutoStartedBySolo = true;
+      startProgression();
+    }
+
+    ensureTransportRunning();
+    setCaption("🔥 Chorus!");
+
+    soloStopEventId = Tone.Transport.scheduleOnce(() => {
+      soloStopEventId = null;
+      stopSolo();
+    }, "+" + SOLO_BARS + "m");
+  }
+
+  function updateChordState(degreeIndex){
+    // If the piano sampler is still loading its samples, don't "consume" this
+    // gesture: bail out WITHOUT updating currentDegree, so the same held gesture
+    // gets retried on the next detection frame once the samples are ready —
+    // otherwise a chord shown too early gets marked as "already played" and
+    // silently never retried, even after loading finishes.
+    if (degreeIndex >= 0 && soundSelect.value === "piano" && !pianoLoaded){
+      return;
+    }
+
+    if (degreeIndex === currentDegree) return;
+    currentDegree = degreeIndex;
+
+    stopAllVoices();
+    stopArpeggio();
+
+    if (degreeIndex === -1){
+      document.getElementById("degreeLabel").textContent = "Sin gesto";
+      document.getElementById("chordName").textContent = "—";
+      document.getElementById("chordNotes").textContent = "";
+      highlightDegree(-1);
+      setCaption(null);
+      return;
+    }
+
+    const chord = buildChord(currentRootMidi(), degreeIndex);
+
+    try {
+      const inst = ensureInstrument();
+      inst.triggerAttack(chord.notes, Tone.now());
+      activeVoices = chord.notes;
+    } catch(e){ /* ignore transient audio errors */ }
+
+    // Soft, slow-attack pad underneath — the "estético, relajante, de sintetizador"
+    // layer — using the upper chord tones only, same as the arpeggio.
+    try {
+      const pad = ensurePad();
+      pad.triggerAttack(chord.notes.slice(1), Tone.now());
+      activePadVoices = chord.notes.slice(1);
+    } catch(e){ /* ignore transient audio errors */ }
+
+    // Arpeggiate only the upper chord tones (skip the extra low bass-doubling
+    // note) so the fast 8th-note layer stays in a register that complements the
+    // sustained chord instead of muddying the bass.
+    startArpeggio(chord.notes.slice(1));
+
+    document.getElementById("degreeLabel").textContent = `Grado ${degreeIndex+1} · ${DEGREES[degreeIndex].roman}`;
+    document.getElementById("chordName").textContent = chord.name;
+    document.getElementById("chordNotes").textContent = chord.notes.join("  ·  ");
+    highlightDegree(degreeIndex);
+    setCaption(chord.name);
+  }
+
+  // Stabilizes finger-count reads: a candidate degree must hold steady for
+  // CHORD_HOLD_MS before it actually triggers a chord change. Without this,
+  // the hand passing through in-between shapes while moving/repositioning
+  // fires a burst of unwanted chord changes ("pa-pa-pa-pa").
+  let pendingDegree = null;
+  let pendingSince = 0;
+  const CHORD_HOLD_MS = 70; // short enough to feel instant, long enough to reject a single flickered frame
+
+  function requestChordDegree(degreeIndex){
+    const now = performance.now();
+    if (degreeIndex !== pendingDegree){
+      pendingDegree = degreeIndex;
+      pendingSince = now;
+    }
+    if (now - pendingSince >= CHORD_HOLD_MS){
+      updateChordState(degreeIndex);
+    }
+  }
+
+  const tiktokCaption = document.getElementById("tiktokCaption");
+  function setCaption(text){
+    if (!text){
+      tiktokCaption.classList.remove("visible");
+      return;
+    }
+    tiktokCaption.textContent = text;
+    tiktokCaption.classList.add("visible");
+    tiktokCaption.classList.remove("pop");
+    void tiktokCaption.offsetWidth; // force reflow so the pop animation replays every time
+    tiktokCaption.classList.add("pop");
+  }
+
+  soundSelect.addEventListener("change", () => {
+    stopAllVoices();
+    stopArpeggio();
+    currentDegree = -1;
+  });
+
+  // ---------- Hand tracking (MediaPipe Hands) ----------
+  const videoEl = document.getElementById("video");
+  const canvasEl = document.getElementById("overlay");
+  // alpha:false skips blending the canvas has no transparency anyway; desynchronized
+  // hints the browser to skip a compositing round-trip where supported (mainly
+  // mobile Chrome) — both are free wins for a canvas repainted every frame.
+  const ctx = canvasEl.getContext("2d", { alpha: false, desynchronized: true });
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const handsCountEl = document.getElementById("handsCount");
+  const fingerCountEl = document.getElementById("fingerCount");
+  const startBtn = document.getElementById("startBtn");
+  const errorBox = document.getElementById("errorBox");
+
+  function showError(msg){
+    errorBox.style.display = "block";
+    errorBox.textContent = msg;
+  }
+
+  // Analyze one hand's landmarks: which fingers are extended, and its "L-shape" angle.
+  // Rotation-invariant: a finger counts as extended when its tip sits noticeably farther
+  // from the wrist than its own knuckle (MCP) does — this works at any hand tilt/angle,
+  // unlike comparing raw y-coordinates (which only works when the hand is held upright).
+  // 3D distance (uses MediaPipe's z/depth estimate too) — more robust than 2D-only
+  // when the hand is tilted toward/away from the camera (close-up shots especially).
+  function dist(a, b){
+    const dx = a.x - b.x, dy = a.y - b.y, dz = (a.z || 0) - (b.z || 0);
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  // Index/middle/ring/pinky: wrist-distance ratio works well (confirmed against
+  // real test data — curling a finger clearly brings its tip back toward the wrist).
+  const FINGER_JOINTS = [
+    { tip: 8,  mcp: 5  }, // index
+    { tip: 12, mcp: 9  }, // middle
+    { tip: 16, mcp: 13 }, // ring
+    { tip: 20, mcp: 17 }, // pinky
+  ];
+  const EXTEND_MARGIN = 1.08;
+
+  // Thumb: curling it doesn't reliably shorten its distance to the wrist (its base
+  // is already close to the wrist, and it moves mostly by opposition/abduction
+  // across the palm, not by bending toward it) — confirmed broken against real
+  // test data (wrist-distance read "extended" even when tucked in for a fist or
+  // pointing gesture). Instead measure how far the thumb tip strays sideways from
+  // the hand's own centerline (wrist → middle-finger knuckle): tucked in, it sits
+  // close to that line; splayed out, it sits well off it. Rotation-invariant and
+  // needs no handedness info.
+  const THUMB_SPREAD_MARGIN = 0.35;
+
+  function analyzeHand(landmarks){
+    const wrist = landmarks[0];
+    const middleMcp = landmarks[9];
+    const thumbTip = landmarks[4];
+
+    const spineDx = middleMcp.x - wrist.x, spineDy = middleMcp.y - wrist.y;
+    const spineLen = Math.sqrt(spineDx * spineDx + spineDy * spineDy) || 1;
+    const perpDist = Math.abs((thumbTip.x - wrist.x) * spineDy - (thumbTip.y - wrist.y) * spineDx) / spineLen;
+    const thumbSpread = perpDist / spineLen;
+    const f_thumb = thumbSpread > THUMB_SPREAD_MARGIN;
+
+    const ratios = FINGER_JOINTS.map(({ tip, mcp }) => {
+      const tipDist = dist(wrist, landmarks[tip]);
+      const mcpDist = dist(wrist, landmarks[mcp]);
+      return mcpDist > 0 ? tipDist / mcpDist : 0;
+    });
+    const [f_index, f_middle, f_ring, f_pinky] = ratios.map(r => r > EXTEND_MARGIN);
+    const total = (f_thumb ? 1 : 0) + [f_index, f_middle, f_ring, f_pinky].filter(Boolean).length;
+
+    const indexTip = landmarks[8];
+    const angleDeg = Math.atan2(indexTip.y - wrist.y, indexTip.x - wrist.x) * 180 / Math.PI;
+
+    // Palm-flip detector for the "grado VI" gesture: with 5 fingers up, rotating
+    // the wrist so the back of the hand faces the camera (instead of the palm)
+    // flips the winding order of wrist->indexMCP->pinkyMCP as seen by the camera.
+    // Rotation-invariant (works at any tilt) and needs no handedness info.
+    const indexMcp = landmarks[5], pinkyMcp = landmarks[17];
+    const palmCross = (indexMcp.x - wrist.x) * (pinkyMcp.y - wrist.y) - (indexMcp.y - wrist.y) * (pinkyMcp.x - wrist.x);
+
+    const debugValues = [+thumbSpread.toFixed(2), ...ratios.map(r => +r.toFixed(2))];
+
+    return { total, angleDeg, ratios: debugValues, wristY: wrist.y, handScale: spineLen, palmCross };
+  }
+
+  // Which physical hand does what is fixed by ON-SCREEN position, not by gesture
+  // shape: the hand on the left of the (mirrored) frame is always the FX hand, the
+  // one on the right is always the piano hand. Raw MediaPipe landmarks are in the
+  // UNMIRRORED camera frame, so on-screen-left corresponds to the LARGER raw x.
+  function assignHandRoles(handsArray){
+    if (handsArray.length === 0) return { chordHand: null, fxHand: null };
+    if (handsArray.length === 1){
+      const x = handsArray[0][0].x;
+      return x > 0.5 ? { chordHand: null, fxHand: handsArray[0] } : { chordHand: handsArray[0], fxHand: null };
+    }
+    const sorted = [...handsArray].sort((a, b) => b[0].x - a[0].x);
+    return { fxHand: sorted[0], chordHand: sorted[sorted.length - 1] };
+  }
+
+  // Standard MediaPipe Hands 21-point topology, for our own skeleton drawing.
+  const HAND_LINKS = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],
+    [0,17],
+  ];
+
+  function drawHandSkeleton(points, color){
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    HAND_LINKS.forEach(([a, b]) => {
+      ctx.beginPath();
+      ctx.moveTo(points[a].x, points[a].y);
+      ctx.lineTo(points[b].x, points[b].y);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#5fc9d6";
+    points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // Hand detection runs on the main thread using MediaPipe's modern Tasks Vision
+  // API (HandLandmarker). We tried running it in a dedicated Worker first (the
+  // pattern Google's docs suggest for camera apps, since detectForVideo() blocks
+  // whoever calls it) — but @mediapipe/tasks-vision's WASM loader fails inside a
+  // module Worker in this environment ("ModuleFactory not set"), while it works
+  // fine on the main thread. So instead we: (1) use the GPU delegate, which is
+  // fast enough per call to not be perceptible, and (2) only call detectForVideo
+  // once per actual new video frame (not on every animation frame), matching
+  // Google's own reference loop.
+  let handLandmarker = null;
+  let handLandmarkerLoading = null;
+  let cameraActive = false;
+  let renderLoopId = null;
+  let firstResultReceived = false;
+  let watchdogTimer = null;
+  let lastVideoTime = -1;
+  let lastHandsInfo = []; // [{ landmarks, color }], updated on every new detection
+
+  async function ensureHandLandmarker(){
+    if (handLandmarker) return handLandmarker;
+    if (handLandmarkerLoading) return handLandmarkerLoading;
+    handLandmarkerLoading = (async () => {
+      try {
+        const { FilesetResolver, HandLandmarker } = await import(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs"
+        );
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm"
+        );
+        const modelAssetPath = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+        try {
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath, delegate: "GPU" },
+            runningMode: "VIDEO",
+            numHands: 2,
+          });
+        } catch (gpuErr){
+          console.warn("Delegate GPU falló, probando CPU:", gpuErr);
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath, delegate: "CPU" },
+            runningMode: "VIDEO",
+            numHands: 2,
+          });
+        }
+        return handLandmarker;
+      } catch (err){
+        showError("No se pudo cargar el modelo de manos: " + (err && err.message ? err.message : String(err)));
+        throw err;
+      }
+    })();
+    return handLandmarkerLoading;
+  }
+
+  // ---------- Arpeggiator level: circular motion of the chord hand ----------
+  // Tracks the chord hand's wrist position over a short rolling time window and
+  // measures how much of a full circle it has swept — rotation-direction and
+  // exact center don't matter, only genuine orbiting (filtered by a minimum
+  // radius, so natural hand tremor while holding still doesn't count). This
+  // yields a continuous 0-1 "spin" amount, not a hard on/off gate, so the
+  // arpeggio layer can fade in and out smoothly instead of snapping.
+  // Motion buffers are per-hand (chord hand for the arpeggiator, FX hand for the
+  // pan effect below) so both hands can be doing their own independent gesture
+  // at once without reading each other's history.
+  let motionBuffer = []; // chord hand
+  let fxMotionBuffer = []; // FX hand
+  const MOTION_BUFFER_MS = 900;
+  const MOTION_MIN_RADIUS = 0.045; // normalized units; filters out jitter
+  const MOTION_FULL_SPIN_DEG = 200; // rotation swept within the window that counts as "full" (100%) spin
+
+  function pushMotionSample(buf, x, y){
+    const t = performance.now();
+    buf.push({ x, y, t });
+    while (buf.length && t - buf[0].t > MOTION_BUFFER_MS) buf.shift();
+  }
+
+  function resetMotionBuffer(){ motionBuffer = []; }
+  function resetFxMotionBuffer(){ fxMotionBuffer = []; }
+
+  function detectSpinIntensity(buf){
+    if (buf.length < 6) return 0;
+    let cx = 0, cy = 0;
+    buf.forEach(p => { cx += p.x; cy += p.y; });
+    cx /= buf.length; cy /= buf.length;
+
+    let avgR = 0;
+    const angles = buf.map(p => {
+      const dx = p.x - cx, dy = p.y - cy;
+      avgR += Math.sqrt(dx * dx + dy * dy);
+      return Math.atan2(dy, dx);
+    });
+    avgR /= buf.length;
+    if (avgR < MOTION_MIN_RADIUS) return 0;
+
+    let totalRad = 0;
+    for (let i = 1; i < angles.length; i++){
+      let d = angles[i] - angles[i - 1];
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      totalRad += d;
+    }
+    const deg = Math.abs(totalRad) * 180 / Math.PI;
+    return Math.min(1, deg / MOTION_FULL_SPIN_DEG);
+  }
+
+  // ---------- Lateral panning detector (FX hand's reverb gesture) ----------
+  // Back-and-forth sideways sweeps (mostly x movement, at least one direction
+  // reversal) as opposed to a loop or a simple drift.
+  const LATERAL_MIN_RANGE = 0.09; // normalized units; filters out small jitter
+  const LATERAL_FULL_RANGE = 0.32; // sweep width that counts as "full" (100%) intensity
+  const LATERAL_MAX_Y_RATIO = 0.6; // if vertical travel is this close to horizontal, it's not a clean pan
+
+  function detectLateralIntensity(buf){
+    if (buf.length < 6) return 0;
+    const xs = buf.map(p => p.x);
+    const ys = buf.map(p => p.y);
+    const xRange = Math.max(...xs) - Math.min(...xs);
+    const yRange = Math.max(...ys) - Math.min(...ys);
+    if (xRange < LATERAL_MIN_RANGE) return 0;
+    if (yRange > xRange * LATERAL_MAX_Y_RATIO) return 0;
+
+    let reversals = 0, lastDir = 0;
+    for (let i = 1; i < xs.length; i++){
+      const d = xs[i] - xs[i - 1];
+      if (Math.abs(d) < 0.002) continue;
+      const dir = d > 0 ? 1 : -1;
+      if (lastDir !== 0 && dir !== lastDir) reversals++;
+      lastDir = dir;
+    }
+    if (reversals < 1) return 0; // require at least one back-and-forth, not just a drift
+
+    return Math.min(1, xRange / LATERAL_FULL_RANGE);
+  }
+
+  // ---------- Arpeggio level smoothing + UI (mirrors the distortion control's easing) ----------
+  const arpBar = document.getElementById("arpBar");
+  const arpValueEl = document.getElementById("arpValue");
+  const arpTag = document.getElementById("arpTag");
+  let arpIntensitySmoothed = 0;
+  const ARP_MAX_VELOCITY = 0.85; // cap so the arpeggio stays a companion, never overpowers the sustained chord
+  const ARP_SMOOTHING = 0.12; // lower = slower, smoother fade in/out
+
+  function updateArpIntensity(rawIntensity){
+    const target = Math.max(0, Math.min(1, rawIntensity)) * ARP_MAX_VELOCITY;
+    arpIntensitySmoothed += (target - arpIntensitySmoothed) * ARP_SMOOTHING;
+    if (arpIntensitySmoothed < 0.004) arpIntensitySmoothed = 0;
+
+    const pct = Math.round((arpIntensitySmoothed / ARP_MAX_VELOCITY) * 100);
+    arpBar.style.width = pct + "%";
+    arpValueEl.textContent = pct + "%";
+    arpTag.textContent = pct > 3 ? "Arpegio activo" : "Arpegio inactivo";
+    arpTag.classList.toggle("on", pct > 3);
+  }
+
+  function processLandmarks(handsArray){
+    const numHands = handsArray.length;
+    handsCountEl.textContent = numHands + (numHands === 1 ? " mano" : " manos");
+    statusText.textContent = numHands > 0
+      ? `Cámara activa · ${numHands} mano${numHands === 1 ? "" : "s"} detectada${numHands === 1 ? "" : "s"}`
+      : "Cámara activa · buscando manos…";
+
+    const { chordHand, fxHand } = assignHandRoles(handsArray);
+
+    let debugRatios = "";
+    let chordInfo = null, fxInfo = null;
+    lastHandsInfo = handsArray.map((landmarks) => {
+      const info = analyzeHand(landmarks);
+      const isFx = landmarks === fxHand;
+      if (isFx) fxInfo = info; else if (landmarks === chordHand) chordInfo = info;
+      if (info.ratios) debugRatios += " [" + info.ratios.map(r => r.toFixed(2)).join(",") + " palm:" + (info.palmCross < 0 ? "-" : "+") + "]";
+      return { landmarks, color: isFx ? "#ff6b6b" : "#e8b04b" };
+    });
+
+    const totalFingers = chordInfo ? chordInfo.total : 0;
+    fingerCountEl.textContent = totalFingers + " dedos detectados" + (debugRatios ? " · " + debugRatios : "");
+
+    let spinIntensity = 0;
+    let chordWristY = null;
+    if (chordHand){
+      const wrist = chordHand[0];
+      chordWristY = wrist.y;
+      pushMotionSample(motionBuffer, wrist.x, wrist.y);
+      spinIntensity = detectSpinIntensity(motionBuffer);
+    } else {
+      resetMotionBuffer();
+    }
+    updateArpIntensity(spinIntensity);
+
+    let fxLateralIntensity = 0;
+    if (fxHand){
+      const fxWrist = fxHand[0];
+      pushMotionSample(fxMotionBuffer, fxWrist.x, fxWrist.y);
+      fxLateralIntensity = detectLateralIntensity(fxMotionBuffer);
+    } else {
+      resetFxMotionBuffer();
+    }
+    updateDropFx(fxInfo, !!fxHand, chordWristY, fxLateralIntensity);
+
+    // Right hand only now (fixed roles): closed fist FIRES the 8-bar solo (see
+    // triggerSolo — it's a background layer, doesn't block chords). Finger count
+    // otherwise drives the chord: 1-4 = degrees I-IV, 5 fingers = V, or VI if the
+    // palm is rotated away from the camera (see palmCross above) — the only way
+    // to reach a 6th option with a hand that only has 5 fingers. vii still isn't
+    // reachable. Dropping the hand out of frame (held ~200ms, to ignore tracking
+    // flicker) cancels an in-progress solo early.
+    let requestedState = -1;
+    if (chordHand){
+      handGoneSince = null;
+      if (totalFingers === 0){
+        requestedState = -1;
+        triggerSolo();
+      } else if (totalFingers === 5){
+        requestedState = (chordInfo.palmCross < 0) ? 5 : 4;
+      } else if (totalFingers <= 4){
+        requestedState = totalFingers - 1;
+      }
+    } else {
+      if (handGoneSince === null) handGoneSince = performance.now();
+      if (soloActive && performance.now() - handGoneSince >= HAND_GONE_CANCEL_MS) stopSolo();
+    }
+    requestChordDegree(requestedState);
+    if (requestedState === -1) resetMotionBuffer();
+  }
+
+  // Cheap: paints the current video frame + last known hand skeleton(s) every
+  // animation frame, so the picture stays smooth regardless of detection speed.
+  function drawSceneFrame(){
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    const cw = canvasEl.clientWidth || 640;
+    const ch = canvasEl.clientHeight || 480;
+    if (canvasEl.width !== cw) canvasEl.width = cw;
+    if (canvasEl.height !== ch) canvasEl.height = ch;
+
+    ctx.save();
+    ctx.clearRect(0, 0, cw, ch);
+
+    // Replicate CSS object-fit:cover so the drawn frame and the landmark
+    // coordinates (normalized to the raw video frame) share the same space.
+    let drawW = cw, drawH = ch, dx = 0, dy = 0;
+    if (vw && vh){
+      const scale = Math.max(cw / vw, ch / vh);
+      drawW = vw * scale;
+      drawH = vh * scale;
+      dx = (cw - drawW) / 2;
+      dy = (ch - drawH) / 2;
+    }
+
+    ctx.translate(cw, 0);
+    ctx.scale(-1, 1); // mirror for a natural selfie view
+    if (vw && vh){
+      ctx.drawImage(videoEl, dx, dy, drawW, drawH);
+    }
+
+    lastHandsInfo.forEach(({ landmarks, color }) => {
+      const points = landmarks.map(lm => ({ x: dx + lm.x * drawW, y: dy + lm.y * drawH }));
+      drawHandSkeleton(points, color);
+    });
+
+    ctx.restore();
+  }
+
+  // Detection is throttled independently of the (smooth, 60fps) draw loop below.
+  // detectForVideo() + processLandmarks() (which schedules Tone.js audio events)
+  // both run on the main thread, and running them at full camera framerate was
+  // competing with audio for the same thread — the actual source of the choppy,
+  // "not fluid" feeling. ~20 detections/sec is still plenty responsive for hand
+  // gestures (far faster than a human can move) and leaves real breathing room.
+  //
+  // The interval is self-tuning rather than a fixed guess: phones range from
+  // flagship to years-old budget hardware, so we measure how long detection
+  // actually takes on THIS device and back off automatically if it's eating
+  // too much of its own budget, instead of assuming a fixed frame rate.
+  const isCoarsePointer = matchMedia("(pointer: coarse)").matches;
+  const DETECTION_INTERVAL_FLOOR = isCoarsePointer ? 55 : 33;
+  const DETECTION_INTERVAL_CEIL = 130;
+  let detectionIntervalMs = DETECTION_INTERVAL_FLOOR;
+  let detectionCostEma = 0;
+  let lastDetectionTime = 0;
+
+  function renderLoop(){
+    if (!cameraActive) return;
+
+    const now = performance.now();
+    if (handLandmarker && videoEl.readyState >= 2 && videoEl.videoWidth > 0
+        && videoEl.currentTime !== lastVideoTime && now - lastDetectionTime >= detectionIntervalMs){
+      lastVideoTime = videoEl.currentTime;
+      lastDetectionTime = now;
+      const t0 = performance.now();
+      try {
+        const results = handLandmarker.detectForVideo(videoEl, now);
+        if (!firstResultReceived){
+          firstResultReceived = true;
+          if (watchdogTimer) clearTimeout(watchdogTimer);
+        }
+        processLandmarks(results.landmarks || []);
+      } catch (e){
+        console.error("Error de detección:", e);
+      }
+      const cost = performance.now() - t0;
+      detectionCostEma = detectionCostEma ? detectionCostEma * 0.85 + cost * 0.15 : cost;
+      if (detectionCostEma > detectionIntervalMs * 0.6){
+        detectionIntervalMs = Math.min(DETECTION_INTERVAL_CEIL, detectionIntervalMs + 4);
+      } else if (detectionCostEma < detectionIntervalMs * 0.25){
+        detectionIntervalMs = Math.max(DETECTION_INTERVAL_FLOOR, detectionIntervalMs - 2);
+      }
+    }
+
+    drawSceneFrame();
+    renderLoopId = requestAnimationFrame(renderLoop);
+  }
+
+  async function startCamera(){
+    errorBox.style.display = "none";
+    startBtn.disabled = true;
+    startBtn.textContent = "Iniciando…";
+    firstResultReceived = false;
+
+    try {
+      if (!audioStarted){
+        await Tone.start();
+        audioStarted = true;
+      }
+      // Pre-create every instrument/effect node up front, while the camera is
+      // still loading (the user is already waiting here) — NOT lazily the first
+      // time each one is used. Building a synth + delay + reverb send mid-gesture
+      // (e.g. the instant you close your fist for the chorus) is exactly the kind
+      // of main-thread hitch that was making things feel like they "se traban".
+      ensureInstrument();
+      ensurePad();
+      ensureLead();
+      ensureDrumKit();
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        throw new Error("Este navegador no soporta acceso a cámara (getUserMedia). Prueba con Chrome o Edge actualizado, sobre http://localhost o https.");
+      }
+
+      statusText.textContent = "Cargando modelo de manos…";
+      await ensureHandLandmarker();
+
+      statusText.textContent = "Solicitando permiso de cámara…";
+      // Ask for a small frame (ideal, not exact — the browser still picks the
+      // closest the camera actually offers). A phone's default camera res is
+      // often 1080p+; MediaPipe and the canvas redraw both pay per-pixel, so
+      // this alone is one of the biggest single wins for smoothness on mobile.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 480, max: 640 }, height: { ideal: 360, max: 480 }, facingMode: "user" },
+        audio: false,
+      });
+      videoEl.srcObject = stream;
+      await videoEl.play();
+
+      cameraActive = true;
+      lastVideoTime = -1;
+      detectionIntervalMs = DETECTION_INTERVAL_FLOOR;
+      detectionCostEma = 0;
+      statusDot.classList.add("live");
+      statusText.textContent = "Cámara activa · buscando manos…";
+      startBtn.textContent = "Detener cámara";
+      startBtn.disabled = false;
+      startBtn.classList.remove("primary");
+      startBtn.onclick = stopCamera;
+
+      renderLoopId = requestAnimationFrame(renderLoop);
+
+      watchdogTimer = setTimeout(() => {
+        if (!firstResultReceived){
+          showError("La cámara está activa pero el modelo de detección de manos no respondió en 15s. Revisa tu conexión a internet (el modelo pesa ~7MB y se descarga desde Google Cloud Storage) o recarga la página. Si el problema persiste, abre la consola del navegador (F12) y comparte el error que aparezca.");
+        }
+      }, 15000);
+    } catch (err){
+      console.error(err);
+      let msg = err && err.message ? err.message : String(err);
+      if (err && err.name === "NotAllowedError"){
+        msg = "Permiso de cámara denegado. Haz clic en el ícono de candado/cámara en la barra de direcciones y permite el acceso a la cámara para este sitio, luego reintenta.";
+      } else if (err && err.name === "NotFoundError"){
+        msg = "No se encontró ninguna cámara conectada en este dispositivo.";
+      } else if (err && err.name === "NotReadableError"){
+        msg = "La cámara está ocupada por otra aplicación (cierra Zoom/Teams/otra pestaña que la esté usando) e intenta de nuevo.";
+      }
+      showError("No se pudo iniciar: " + msg);
+      startBtn.disabled = false;
+      startBtn.textContent = "Reintentar";
+      cameraActive = false;
+      if (videoEl.srcObject){
+        videoEl.srcObject.getTracks().forEach(t => t.stop());
+        videoEl.srcObject = null;
+      }
+    }
+  }
+
+  function stopCamera(){
+    cameraActive = false;
+    if (renderLoopId){ cancelAnimationFrame(renderLoopId); renderLoopId = null; }
+    if (watchdogTimer){ clearTimeout(watchdogTimer); watchdogTimer = null; }
+    if (videoEl.srcObject){
+      videoEl.srcObject.getTracks().forEach(t => t.stop());
+      videoEl.srcObject = null;
+    }
+    lastHandsInfo = [];
+    resetMotionBuffer();
+    resetFxMotionBuffer();
+    updateArpIntensity(0);
+    stopSolo();
+    handGoneSince = null;
+    pendingDegree = null;
+    updateChordState(-1);
+    statusDot.classList.remove("live");
+    statusText.textContent = "Cámara apagada";
+    handsCountEl.textContent = "0 manos";
+    fingerCountEl.textContent = "0 dedos detectados";
+    startBtn.textContent = "Iniciar cámara";
+    startBtn.classList.add("primary");
+    startBtn.onclick = startCamera;
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  }
+
+  // Preload the model (~7MB) as soon as the page opens, so it's likely already
+  // warm by the time the user clicks "Iniciar cámara".
+  ensureHandLandmarker().catch(() => {}); // errors are already surfaced via showError
+
+  startBtn.onclick = startCamera;
+})();
+</script>
+</body>
+</html>
