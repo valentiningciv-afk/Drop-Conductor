@@ -66,7 +66,7 @@
   #infoBtn{position:absolute;top:calc(16px + env(safe-area-inset-top, 0px));right:calc(16px + env(safe-area-inset-right, 0px));z-index:6;}
 
   .tiktok-caption{
-    position:absolute;left:50%;bottom:15%;
+    position:absolute;left:50%;bottom:max(15%, 140px);
     transform:translateX(-50%);
     z-index:5;
     font-family:"Pixelify Sans",sans-serif;
@@ -99,7 +99,7 @@
   .dock{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:6;
     padding:12px 16px;
     display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;
-    max-width:calc(100vw - 24px);}
+    width:max-content;max-width:calc(100vw - 24px);}
   .dock-group{display:flex;align-items:center;gap:8px;}
   .dock-sep{width:3px;height:28px;background:var(--outline);border-radius:2px;}
 
@@ -184,6 +184,52 @@
 
   footer{font-size:.72rem;color:var(--muted);line-height:1.5;padding-top:4px;border-top:2px dashed var(--ink-2);}
 
+  /* ---------- Guided drop: song timeline, coach line, picker ---------- */
+  .tiktok-caption.big{bottom:auto;top:42%;font-size:clamp(40px, 12.5vw, 150px);color:var(--pink);}
+  .tiktok-caption.big.gold{color:var(--accent);}
+
+  .song-bar{position:absolute;top:calc(66px + env(safe-area-inset-top, 0px));left:50%;transform:translateX(-50%);z-index:5;
+    width:min(560px, calc(100vw - 32px));padding:10px 12px;display:flex;flex-direction:column;gap:7px;}
+  .song-bar-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+  .song-name{font-size:.86rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+  .song-chord{font-size:1.05rem;color:var(--accent);font-weight:700;white-space:nowrap;}
+  .song-track{display:flex;gap:4px;height:26px;}
+  .song-seg{position:relative;border-radius:7px;background:var(--ink-2);border:2px solid var(--outline);overflow:hidden;min-width:0;}
+  .song-seg .fill{position:absolute;inset:0 auto 0 0;width:0%;background:var(--accent-2);opacity:.85;}
+  .song-seg.drop .fill{background:var(--pink);}
+  .song-seg.build .fill{background:var(--accent);}
+  .song-seg .lbl{position:relative;display:block;text-align:center;font-size:.7rem;line-height:22px;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 0 var(--outline);letter-spacing:.04em;}
+  .song-seg.now{border-color:var(--text);}
+  .song-next{font-size:.8rem;color:var(--muted);text-align:center;min-height:1.1em;}
+  .song-next b{color:var(--pink);}
+
+  .coach{position:absolute;left:50%;bottom:calc(92px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:5;
+    padding:8px 14px;font-size:.86rem;color:var(--text);text-align:center;max-width:calc(100vw - 32px);
+    transition:opacity .25s;}
+  .coach:empty{opacity:0;}
+
+  .picker{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;
+    background:rgba(13,10,26,.72);padding:16px;}
+  .picker-card{width:min(560px, 100%);max-height:calc(100% - 20px);overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;}
+  .picker-card h1{margin:0;font-size:1.7rem;color:var(--accent);text-align:center;}
+  .picker-card p{margin:0;font-size:.86rem;color:var(--muted);text-align:center;line-height:1.5;}
+  .song-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .song-chip{background:var(--ink-2);border:3px solid var(--outline);border-radius:12px;padding:12px;text-align:left;
+    color:var(--text);box-shadow:3px 3px 0 var(--outline);display:flex;flex-direction:column;gap:3px;font-size:.95rem;}
+  .song-chip .emo{font-size:1.5rem;}
+  .song-chip .vibe{font-size:.74rem;color:var(--muted);}
+  .song-chip:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--outline);}
+  .song-chip.active{border-color:var(--accent);}
+  .song-chip.free{grid-column:1 / -1;flex-direction:row;align-items:center;gap:10px;}
+  .song-chip.free .vibe{flex:1;}
+  @media (max-width:640px){
+    .coach{bottom:calc(112px + env(safe-area-inset-bottom, 0px));font-size:.78rem;}
+    .dock-hands{display:none;}
+    .dock-group{flex-wrap:wrap;justify-content:center;}
+    .song-chip{padding:10px;font-size:.86rem;}
+  }
+
   @media (max-width:640px){
     .dock{gap:8px;padding:9px 10px;}
     .mini-meter{width:58px;}
@@ -205,6 +251,26 @@
     <div id="errorBox" style="display:none" class="error-box"></div>
 
     <div class="tiktok-caption pixel-text" id="tiktokCaption"></div>
+
+    <div id="songBar" class="song-bar glass" style="display:none">
+      <div class="song-bar-top">
+        <span id="songName" class="song-name" title="Cambiar de drop">🚀 Primer Drop</span>
+        <span id="songChord" class="song-chord pixel-text">—</span>
+      </div>
+      <div class="song-track" id="songTrack"></div>
+      <div class="song-next" id="songNext"></div>
+    </div>
+
+    <div id="coach" class="coach glass"></div>
+
+    <div id="picker" class="picker">
+      <div class="picker-card glass">
+        <h1 class="pixel-text">Elegí tu drop</h1>
+        <p>La canción avanza sola hacia el drop. Vos le das onda con las manos:
+          la <b>derecha</b> toca la melodía (siempre suena bien), la <b>izquierda</b> maneja los efectos.</p>
+        <div class="song-grid" id="songGrid"></div>
+      </div>
+    </div>
 
     <div id="infoPanel" class="info-panel glass" style="display:none">
       <div class="info-panel-head">
@@ -250,7 +316,27 @@
         <span id="dockProgName" class="drum-name">Estilo Levels</span>
       </div>
 
-      <h2>Cómo tocar</h2>
+      <h2>Cómo se juega</h2>
+
+      <div class="hint">
+        <b>Drops guiados:</b> elegí un drop y la canción avanza sola
+        (intro → subida → silencio → <b>DROP</b> → pausa → otra subida). Arriba
+        ves en qué parte estás y cuánto falta para el drop.<br><br>
+        <b>Mano derecha = melodía.</b> Subila y bajala: cada altura es una nota
+        del acorde que está sonando, así que nunca desafina, y cae siempre a
+        tiempo. Quieta late en negras, moviéndola toca más rápido. Puño = silencio.<br><br>
+        <b>Mano izquierda = efectos</b>, los tres a la vez:<br>
+        ↻ <b>girá la muñeca</b> → tensión (filtro que sube + whoosh + distorsión).<br>
+        ↑ <b>subila</b> por encima de la línea punteada → eco gigante y más reverb
+        (repite hasta la batería).<br>
+        ← <b>llevala al borde izquierdo</b> de la pantalla → stutter: la música se
+        corta a ritmo en semicorcheas.<br>
+        Bajala del cuadro para apagar todo.<br><br>
+        En el conteo antes del drop, <b>levantá las manos</b>: si están arriba
+        cuando cae el drop, ¡PERFECTO!
+      </div>
+
+      <h2>Modo libre (tocás vos los acordes)</h2>
 
       <div class="chord-display">
         <div class="degree-label" id="degreeLabel">Sin gesto</div>
@@ -262,36 +348,13 @@
       <div class="scale-table" id="scaleTable"></div>
 
       <div class="hint">
-        Escala <b>menor natural</b> (con V y VII prestados de la menor armónica
-        para más tensión/resolución) — la base real de los drops de EDM/progressive
-        house (Levels, Titanium, Wake Me Up son todos en menor). Los roles son
-        fijos por posición en pantalla, no por forma de la mano: <b>mano derecha
-        = piano</b>, <b>mano izquierda = efectos</b>.<br><br>
-        <b>Mano derecha:</b> 1-4 dedos → acordes i a iv. 5 dedos con la palma
-        de frente a la cámara → V; 5 dedos rotando la muñeca para mostrar el
-        <b>dorso</b> de la mano → VI (el único modo de sacar un 6º grado con
-        5 dedos). Mantené el gesto un instante para que dispare (evita falsos
-        cambios al mover la mano). Movela en círculos manteniendo el mismo
-        número de dedos para que un arpegio suave del acorde vaya subiendo de
-        volumen — cuanto más girás, más presente. Cerrar el puño <b>dispara un
-        chorus completo</b>: la melodía generativa (solo de synth) y la
-        progresión de acordes elegida en la galería arrancan juntas — melodía
-        + armonía, 8 compases a tempo, nivel épico. Es una capa de fondo, no un
-        modo: podés seguir mostrando dedos y tocando acordes normalmente
-        mientras el chorus sigue sonando. Se apaga solo a los 8 compases, o
-        antes si bajás la mano fuera de cuadro.<br><br>
-        <b>Mano izquierda:</b> arma un <b>drop</b> estilo progresivo/EDM con tres
-        gestos físicamente distintos — <b>rotá</b> la muñeca desde donde apareció
-        la mano para un filtro riser + whoosh + distorsión (tensión); <b>subila
-        por encima de tu mano derecha</b> (se mide relativo a la otra mano, no a
-        una altura fija) para un eco más grande; <b>paneala de lado a lado</b>
-        con la palma de frente a la cámara para abrir un reverb enorme. Bajala
-        del cuadro para apagar todo.<br><br>
-        Tocá el nombre de la batería (arriba, en Configuración) para elegir un patrón — tiene un
-        corte automático cada 4 compases, arranca con 20s de <b>drop</b> intenso
-        (sub + shaker) y sigue con 16 compases de ritmo puro antes de repetir.
-        Tocá el nombre de la progresión para elegir un drop de piano clásico de
-        EDM (i-VI-III-VII y variantes) y escucharlo en loop.
+        Elegí <b>Modo libre</b> en la lista de drops. Escala <b>menor natural</b>
+        (con V y VII prestados de la menor armónica). <b>Mano derecha:</b> 1-4
+        dedos → acordes i a iv; 5 dedos con la palma de frente → V; 5 dedos
+        mostrando el <b>dorso</b> → VI. Movela en círculos para sumar un arpegio.
+        Cerrar el puño dispara un chorus de 8 compases (melodía + progresión).
+        La mano izquierda maneja los mismos tres efectos que en los drops guiados.
+        Arriba, en Configuración, podés prender la batería y la progresión del modo libre.
       </div>
 
       <footer>MediaPipe HandLandmarker (Tasks Vision, GPU) para el tracking · Tone.js con samples de piano Salamander para el audio. Todo corre localmente en tu navegador; el video no se envía a ningún servidor.</footer>
@@ -316,7 +379,8 @@
 
     <div class="dock glass">
       <div class="dock-group">
-        <button id="startBtn" class="dock-btn primary">▶ Iniciar cámara</button>
+        <button id="startBtn" class="dock-btn primary">▶ Empezar</button>
+        <button id="pickerBtn" class="dock-btn" style="display:none">🎵 Drops</button>
         <span class="dock-status"><span id="statusDot" class="status-dot"></span><span id="statusText">Cámara apagada</span></span>
         <span class="dock-hands" id="handsCount">0 manos</span>
       </div>
@@ -426,10 +490,32 @@
   // directly — with drums, piano/pad, arp, solo, reverb and echo all summing
   // together, peaks were pushing well past 0dBFS (hard digital clipping/crackle).
   // This catches that without needing to constantly re-balance every layer.
-  let masterLimiter = null;
+  //
+  //
+  // masterIn -> gateGain -> soft clipper -> limiter. gateGain is the left
+  // hand's "stutter": it chops EVERYTHING (drums included) in time with the
+  // song, which is why it sits after every bus instead of on one instrument.
+  // The clipper is there because the limiter alone never caught the kick:
+  // its 3 ms attack lets the transient straight through, and measured peaks
+  // with the drums on were hitting 1.5-2.0 (up to +6 dB over full scale,
+  // i.e. hard digital clipping in the speaker). Clipping the kick softly is
+  // standard in EDM anyway; everything under 0.6 passes untouched.
+  let masterLimiter = null, masterIn = null, gateGain = null;
   function ensureMasterBus(){
-    if (!masterLimiter) masterLimiter = new Tone.Limiter(-1).toDestination();
-    return masterLimiter;
+    if (!masterIn){
+      masterLimiter = new Tone.Limiter(-1).toDestination();
+      // WaveShaper curves only cover -1..1, so halve the signal going in and
+      // let the curve describe -2..2: peaks up to 2.0 get rounded off to <0.98.
+      const clipper = new Tone.WaveShaper((x) => {
+        const v = Math.abs(2 * x), knee = 0.6, room = 0.38;
+        const y = v < knee ? v : knee + room * Math.tanh((v - knee) / room);
+        return Math.sign(x) * y;
+      }, 4096).connect(masterLimiter);
+      const clipIn = new Tone.Gain(0.5).connect(clipper);
+      gateGain = new Tone.Gain(1).connect(clipIn);
+      masterIn = new Tone.Gain(1).connect(gateGain);
+    }
+    return masterIn;
   }
 
   // Shared effects chain, driven by the FX (left) hand through three PHYSICALLY
@@ -448,7 +534,11 @@
   let distortionNode = null;
   let reverbNode = null;
   let riserNoise = null, riserNoiseFilter = null, riserNoiseGain = null;
-  let echoDelay = null, echoSendGain = null;
+  let echoDelay = null, echoSendGain = null, drumEchoSend = null;
+  // Sidechain "pump": everything melodic (pad, chords, lead, bass) comes out of
+  // the reverb through this gain, which the guided song ducks on every kick
+  // during the drop. Drums bypass it, so the kick punches through the hole.
+  let pumpGain = null;
   let sharedChorus = null; // one Chorus shared by the pad and the main synth instead of one each
 
   function ensureEffectsChain(){
@@ -458,7 +548,8 @@
       // Shorter decay than before (2.4s -> 1.8s): convolution-reverb cost scales
       // with tail length, and this was one of the biggest contributors to the
       // audio-thread stutter under load.
-      reverbNode = new Tone.Reverb({ decay: 1.8, wet: 0.18 }).connect(ensureMasterBus());
+      pumpGain = new Tone.Gain(1).connect(ensureMasterBus());
+      reverbNode = new Tone.Reverb({ decay: 1.8, wet: 0.18 }).connect(pumpGain);
       riserFilter.connect(distortionNode);
       distortionNode.connect(reverbNode);
       sharedChorus = new Tone.Chorus(3, 2, 0.38).start();
@@ -475,9 +566,9 @@
 
       // Echo send: a parallel tap (not in series), so it adds on top of the dry
       // signal rather than replacing it.
-      echoDelay = new Tone.FeedbackDelay("8n.", 0.32);
+      echoDelay = new Tone.FeedbackDelay("8n.", 0.28);
       echoDelay.wet.value = 1;
-      echoDelay.connect(ensureMasterBus());
+      echoDelay.connect(pumpGain); // pumped + muted in the pre-drop gap along with everything melodic
       echoSendGain = new Tone.Gain(0).connect(echoDelay);
       distortionNode.connect(echoSendGain);
     }
@@ -676,11 +767,16 @@
   let hatClosedSynth = null, hatOpenSynth = null;
   let subSynth = null, rideSynth = null;
   let impactNoise = null, impactKick = null;
+  let snareFilter = null; // kept so the guided build can sweep the snare roll's pitch up
 
   function ensureDrumKit(){
     if (drumBus) return;
     ensureEffectsChain(); // so we can reuse reverbNode instead of a 2nd convolution reverb
     drumBus = new Tone.Volume(parseFloat(drumVolumeEl.value)).connect(ensureMasterBus());
+    // The "raise the FX hand" echo also catches the drums: a snare or clap
+    // repeating is what makes the throw obvious, a held chord echoing isn't.
+    drumEchoSend = new Tone.Gain(0).connect(echoDelay);
+    drumBus.connect(drumEchoSend);
 
     kickSynth = new Tone.MembraneSynth({
       pitchDecay: 0.05, octaves: 6,
@@ -688,7 +784,7 @@
     }).connect(drumBus);
     kickSynth.volume.value = 1;
 
-    const snareFilter = new Tone.Filter(1700, "bandpass").connect(drumBus);
+    snareFilter = new Tone.Filter(1700, "bandpass").connect(drumBus);
     snareSynth = new Tone.NoiseSynth({
       noise: { type: "white" },
       envelope: { attack: 0.001, decay: 0.2, sustain: 0 },
@@ -744,7 +840,7 @@
     impactNoise = new Tone.NoiseSynth({
       noise: { type: "white" },
       envelope: { attack: 0.001, decay: 1.1, sustain: 0 },
-    }).connect(reverbNode);
+    }).connect(ensureMasterBus()); // not through reverb: that path is pumped, and the pump dips right on the drop
     impactNoise.volume.value = -3;
 
     impactKick = new Tone.MembraneSynth({
@@ -754,16 +850,23 @@
     impactKick.volume.value = 2;
   }
 
-  function triggerDropImpact(time){
+  // withSub=false when the same step's kick already fires the sub: two attacks
+  // on one synth at the exact same time throw ("Start time must be strictly
+  // greater..."), which used to abort everything else scheduled on the
+  // drop's first beat.
+  function triggerDropImpact(time, note = "C1", withSub = true){
     impactNoise.triggerAttackRelease("2n", time);
     impactKick.triggerAttackRelease("C1", "2n", time);
-    subSynth.triggerAttackRelease("C1", "2n", time, 1);
+    if (withSub) subSynth.triggerAttackRelease(note, "2n", time, 1);
   }
 
-  function triggerDrumStep(stepArrays, stepIdx, time, isDrop){
+  // subNote: pitch of the drop's sub under each kick (the song's key, so it
+  // doesn't fight the bass line); null skips the sub for songs whose own bass
+  // already lands on the kicks.
+  function triggerDrumStep(stepArrays, stepIdx, time, isDrop, subNote = "C1"){
     if (stepArrays.kick.includes(stepIdx)){
       kickSynth.triggerAttackRelease("C1", "8n", time);
-      if (isDrop) subSynth.triggerAttackRelease("C1", "4n", time, 1);
+      if (isDrop && subNote) subSynth.triggerAttackRelease(subNote, "4n", time, 1);
     }
     if (stepArrays.snare.includes(stepIdx)) snareSynth.triggerAttackRelease("16n", time);
     // Layer the clap under the snare during the drop for a bigger hit, but never
@@ -808,7 +911,7 @@
     drumSeq = new Tone.Sequence((time, stepIdx) => {
       const isDrop = drumPhase === "drop";
       if (stepIdx === 0 && phaseJustChanged && isDrop){
-        triggerDropImpact(time);
+        triggerDropImpact(time, "C1", !pattern.kick.includes(0));
         phaseJustChanged = false;
       }
       const base = isDrop ? pattern : groove;
@@ -1038,27 +1141,44 @@
   progGalleryCloseBtn.onclick = () => togglePanel(progGalleryPanel, false);
 
   // ---------- Drop FX control (the FX/left hand — always, by position) ----------
-  // Three PHYSICALLY independent motions, recalibrated from real testing:
+  // Three independent motions, each wired to an effect you can't miss:
   //  - TWIST the wrist from wherever the hand first appeared: highpass sweep +
   //    riser whoosh + distortion grit — tension building toward a drop.
-  //  - RAISE the hand above the CHORD hand's current height (relative to the
-  //    other hand, not a fixed point on screen — engages exactly when you lift
-  //    it past your other hand, not "whenever it happens to be low"): a
-  //    dotted-8th echo throw gets bigger.
-  //  - PAN the hand side to side with the palm facing the camera: the reverb
-  //    opens into a huge wash. Replaces the old "pull hand back" gesture, which
-  //    wasn't reliably detected.
+  //  - RAISE the hand above a fixed line on screen: a big dotted-8th echo that
+  //    also catches the drums, plus more reverb.
+  //  - MOVE it toward the left edge of the screen: a stutter that chops the
+  //    whole mix in 16ths, locked to the tempo.
+  // The old versions of the last two never registered: "raise" only counted
+  // height above the OTHER hand and topped out at a 35% echo send on
+  // sustained chords, and "pan" needed a fast back-and-forth wave inside
+  // 0.9s to nudge the reverb. Both are now plain positions, no gesture to
+  // recognise, and each is drawn on screen as a zone with its own meter.
   const fxBar = document.getElementById("fxBar");
   const fxValue = document.getElementById("fxValue");
   const fxTag = document.getElementById("fxTag");
 
   let lBaselineAngle = null;
-  let smoothedDrop = 0;
-  let smoothedEcho = 0;
-  let smoothedSpace = 0;
-  const DROP_ROTATION_RANGE_DEG = 55; // full rotation (either direction) = 100% build
-  const ECHO_HEIGHT_RANGE = 0.3; // how far above the chord hand counts as "full" echo
-  const REVERB_BASE_WET = 0.18, REVERB_MAX_WET = 0.75;
+  const fxTarget = { rot: 0, lift: 0, edge: 0 };
+  const fxLevel = { rot: 0, lift: 0, edge: 0 }; // smoothed, what the audio actually uses
+  let fxHandActive = false;
+  // Filled in by the guided song: build = 0..1 progress through the build
+  // (drives the same riser the twist does), gap = the silent beat before a drop.
+  const songAuto = { build: 0, gap: false };
+
+  const ROT_DEADZONE_DEG = 10;       // ignore the small tilt that comes with just moving the arm
+  const DROP_ROTATION_RANGE_DEG = 50; // rotation past the dead zone that counts as 100%
+  // Zones are in SCREEN coordinates (0-1 of what you see, see toView()), not
+  // raw camera coordinates: on a portrait phone the camera frame is cropped
+  // hard on the sides, and a raw-x threshold could sit completely off screen.
+  const LIFT_START_Y = 0.55; // wrist above this line (0 = top of screen) starts the echo...
+  const LIFT_FULL_Y = 0.25;  // ...and at this height it's at full
+  // Wrist left of 24% of the screen width starts the stutter, full chop near
+  // the edge. A portrait phone is so narrow that a relaxed left hand already
+  // sits around 20-25%, so there the zone is squeezed closer to the edge.
+  function edgeZone(){
+    return viewMap.cw < viewMap.ch ? { start: 0.15, full: 0.04 } : { start: 0.24, full: 0.08 };
+  }
+  const REVERB_BASE_WET = 0.18, REVERB_MAX_WET = 0.6;
 
   function angleDiffDeg(a, b){
     let d = a - b;
@@ -1066,54 +1186,88 @@
     while (d < -180) d += 360;
     return d;
   }
+  const clamp01 = v => Math.max(0, Math.min(1, v));
 
-  // fxInfo: analyzeHand() output for the FX hand. chordWristY: the chord hand's
-  // current wrist y (null if that hand isn't in frame). fxLateralIntensity: 0-1
-  // from detectLateralIntensity(fxMotionBuffer) — the pan gesture below.
-  function updateDropFx(fxInfo, active, chordWristY, fxLateralIntensity){
-    let rotationTarget = 0, echoTarget = 0, spaceTarget = 0;
-    if (active){
-      if (lBaselineAngle === null) lBaselineAngle = fxInfo.angleDeg;
-      const delta = Math.abs(angleDiffDeg(fxInfo.angleDeg, lBaselineAngle));
-      rotationTarget = Math.min(1, delta / DROP_ROTATION_RANGE_DEG);
-
-      // y grows downward, so "FX hand above the chord hand" means a SMALLER y.
-      // No chord hand in frame? Fall back to "above the top of the video" so
-      // the gesture still works solo.
-      const referenceY = chordWristY === null ? 1 : chordWristY;
-      const heightAboveChord = referenceY - fxInfo.wristY;
-      echoTarget = Math.max(0, Math.min(1, heightAboveChord / ECHO_HEIGHT_RANGE));
-
-      spaceTarget = fxLateralIntensity;
-    } else {
+  // Called once per detection with the FX hand's analyzeHand() output and its
+  // wrist in screen coordinates (or active=false when there's no FX hand in frame).
+  function updateDropFx(fxInfo, active, wrist){
+    fxHandActive = active;
+    if (!active){
       lBaselineAngle = null;
+      fxTarget.rot = fxTarget.lift = fxTarget.edge = 0;
+      return;
     }
-    smoothedDrop += (rotationTarget - smoothedDrop) * 0.2;
-    smoothedEcho += (echoTarget - smoothedEcho) * 0.15;
-    smoothedSpace += (spaceTarget - smoothedSpace) * 0.12;
-    if (Math.abs(smoothedDrop) < 0.003) smoothedDrop = 0;
-    if (Math.abs(smoothedEcho) < 0.003) smoothedEcho = 0;
-    if (Math.abs(smoothedSpace) < 0.003) smoothedSpace = 0;
+    if (lBaselineAngle === null) lBaselineAngle = fxInfo.angleDeg;
+    const delta = Math.abs(angleDiffDeg(fxInfo.angleDeg, lBaselineAngle));
+    fxTarget.rot = clamp01((delta - ROT_DEADZONE_DEG) / DROP_ROTATION_RANGE_DEG);
+    fxTarget.lift = clamp01((LIFT_START_Y - wrist.y) / (LIFT_START_Y - LIFT_FULL_Y));
+    const zone = edgeZone();
+    fxTarget.edge = clamp01((zone.start - wrist.x) / (zone.start - zone.full));
+  }
 
-    if (riserFilter){
-      // Exponential sweep: 20Hz (fully open) up to ~3.5kHz (thin/tense) at full build.
-      riserFilter.frequency.value = 20 * Math.pow(175, smoothedDrop);
-    }
-    if (riserNoiseGain){
-      riserNoiseGain.gain.value = smoothedDrop * 0.22;
-      riserNoiseFilter.frequency.value = 200 * Math.pow(25, smoothedDrop);
-    }
-    if (distortionNode){
-      distortionNode.distortion = smoothedDrop * 0.75;
-      distortionNode.wet.value = smoothedDrop; // wet is a Tone.Signal, not a plain settable prop
-    }
-    if (echoSendGain) echoSendGain.gain.value = smoothedEcho * 0.35;
-    if (reverbNode) reverbNode.wet.value = REVERB_BASE_WET + smoothedSpace * (REVERB_MAX_WET - REVERB_BASE_WET);
+  // Only touch an AudioParam when its value really moved: this runs every
+  // animation frame, and each .value write is an automation event.
+  const lastParamValues = new Map();
+  function setParam(key, param, value, eps){
+    const prev = lastParamValues.get(key);
+    if (prev !== undefined && Math.abs(prev - value) < eps) return;
+    lastParamValues.set(key, value);
+    param.value = value;
+  }
 
-    fxBar.style.width = (smoothedDrop * 100).toFixed(0) + "%";
-    fxValue.textContent = Math.round(smoothedDrop * 100) + "%";
-    fxTag.textContent = active ? "Mano FX activa" : "Drop inactivo";
-    fxTag.classList.toggle("on", active);
+  // Per animation frame: ease the hand values and push them (plus the song's
+  // automatic build) into the audio graph. Frame-rate independent easing.
+  function applyFx(dtMs){
+    const ease = rate => 1 - Math.pow(1 - rate, dtMs / 33);
+    fxLevel.rot += (fxTarget.rot - fxLevel.rot) * ease(0.22);
+    fxLevel.lift += (fxTarget.lift - fxLevel.lift) * ease(0.2);
+    fxLevel.edge += (fxTarget.edge - fxLevel.edge) * ease(0.3);
+    for (const k of ["rot", "lift", "edge"]) if (fxLevel[k] < 0.003) fxLevel[k] = 0;
+    if (!riserFilter) return;
+
+    // The build's automatic riser and the twist share one knob; whichever is
+    // higher wins, so twisting during a build pushes past the automatic sweep.
+    const tension = Math.max(fxLevel.rot, songAuto.build * 0.8);
+    const whoosh = songAuto.gap ? 0 : Math.max(fxLevel.rot * 0.22, songAuto.build * 0.3);
+    setParam("hp", riserFilter.frequency, 20 * Math.pow(175, tension), 1);
+    setParam("noiseGain", riserNoiseGain.gain, whoosh, 0.004);
+    setParam("noiseFreq", riserNoiseFilter.frequency, 200 * Math.pow(25, Math.max(fxLevel.rot, songAuto.build)), 5);
+    if (Math.abs((lastParamValues.get("dist") ?? -1) - fxLevel.rot) > 0.01){
+      lastParamValues.set("dist", fxLevel.rot);
+      distortionNode.distortion = fxLevel.rot * 0.75;
+    }
+    setParam("distWet", distortionNode.wet, fxLevel.rot, 0.01);
+
+    setParam("echoSend", echoSendGain.gain, fxLevel.lift * 0.85, 0.01);
+    if (drumEchoSend) setParam("drumEcho", drumEchoSend.gain, fxLevel.lift * 0.6, 0.01);
+    setParam("echoFb", echoDelay.feedback, 0.28 + fxLevel.lift * 0.3, 0.01);
+    setParam("revWet", reverbNode.wet, REVERB_BASE_WET + fxLevel.lift * (REVERB_MAX_WET - REVERB_BASE_WET), 0.01);
+
+    fxBar.style.width = (tension * 100).toFixed(0) + "%";
+    fxValue.textContent = Math.round(tension * 100) + "%";
+    fxTag.textContent = fxHandActive ? "Mano FX activa" : "Drop inactivo";
+    fxTag.classList.toggle("on", fxHandActive);
+  }
+
+  // Stutter: every 16th note, gateGain drops for the second half of the step
+  // by as much as the hand is into the edge zone. Scheduled on the Transport
+  // (not driven from the frame loop) so the chops land exactly on the grid.
+  let gateLoop = null;
+  function ensureGateLoop(){
+    if (gateLoop) return;
+    ensureMasterBus();
+    gateLoop = new Tone.Loop((time) => {
+      const depth = Math.min(1, fxLevel.edge * 1.1);
+      if (depth < 0.03) return;
+      const len = Tone.Time("16n").toSeconds();
+      const g = gateGain.gain;
+      g.cancelScheduledValues(time);
+      g.setValueAtTime(1, time);
+      g.setValueAtTime(1, time + len * 0.5 - 0.004);
+      g.linearRampToValueAtTime(1 - depth, time + len * 0.5);
+      g.setValueAtTime(1 - depth, time + len - 0.004);
+      g.linearRampToValueAtTime(1, time + len);
+    }, "16n").start(0);
   }
 
   let currentDegree = -1; // -1 = silence
@@ -1313,12 +1467,17 @@
   }
 
   const tiktokCaption = document.getElementById("tiktokCaption");
-  function setCaption(text){
+  let captionHideTimer = null;
+  function setCaption(text, opts = {}){
+    clearTimeout(captionHideTimer);
+    if (text && opts.hideAfter) captionHideTimer = setTimeout(() => setCaption(null), opts.hideAfter);
     if (!text){
       tiktokCaption.classList.remove("visible");
       return;
     }
     tiktokCaption.textContent = text;
+    tiktokCaption.classList.toggle("big", !!opts.big);
+    tiktokCaption.classList.toggle("gold", !!opts.gold);
     tiktokCaption.classList.add("visible");
     tiktokCaption.classList.remove("pop");
     void tiktokCaption.offsetWidth; // force reflow so the pop animation replays every time
@@ -1330,6 +1489,354 @@
     stopArpeggio();
     currentDegree = -1;
   });
+
+  // ---------- Guided drops: pre-arranged songs that play themselves ----------
+  // The song runs on its own — intro, build (snare roll + riser), one beat of
+  // silence, DROP, breakdown, and back into another build — so nobody has to
+  // know how to play for it to sound like a real drop. The hands add on top:
+  // the right hand plays a lead that can only ever pick notes of the chord
+  // that's sounding, quantized to the grid; the left hand rides the effects.
+  // Everything is scheduled from one 16th-note Transport loop (songTick).
+  const SONGS = [
+    { name: "Primer Drop", emoji: "🚀", vibe: "Alegre, el más fácil", bpm: 122, key: 9,  prog: [0,5,2,6], sound: "synth",
+      drum: 0, stab: [2,6,10,14], stabLen: "16n", bass: [2,6,10,14], sub: true },
+    { name: "Titán",       emoji: "⚡", vibe: "Épico, future bass",   bpm: 124, key: 5,  prog: [0,2,6,5], sound: "futurebass",
+      drum: 1, stab: [0,3,6,8,11,14], stabLen: "8n", bass: [0,3,6,8,11,14], sub: false },
+    { name: "Atardecer",   emoji: "🌅", vibe: "Tropical y tranqui",    bpm: 108, key: 0,  prog: [5,6,0,4], sound: "pluck",
+      drum: 6, stab: [0,3,6,10,12], stabLen: "16n", bass: [0,6,8,14], sub: false },
+    { name: "Festival",    emoji: "🎆", vibe: "Big room, para saltar", bpm: 126, key: 7,  prog: [3,5,0,4], sound: "synth",
+      drum: 9, stab: [0,3,6,8,10,12,14], stabLen: "16n", bass: [2,6,10,14], sub: true },
+    { name: "Campanitas",  emoji: "🔔", vibe: "Para los más chicos",   bpm: 112, key: 2,  prog: [0,3,5,4], sound: "bells",
+      drum: 7, stab: [0,4,8,12], stabLen: "8n", bass: [2,6,10,14], sub: true },
+  ];
+
+  // Arrangement in bars: the intro plays once, then build/drop/breakdown loop.
+  const SECTIONS = {
+    intro:     { label: "Intro",  bars: 4 },
+    build:     { label: "Subida", bars: 8 },
+    drop:      { label: "DROP",   bars: 16 },
+    breakdown: { label: "Pausa",  bars: 4 },
+  };
+  const CYCLE = ["build", "drop", "breakdown"];
+  const CYCLE_BARS = CYCLE.reduce((n, k) => n + SECTIONS[k].bars, 0);
+
+  function sectionAtBar(bar){
+    if (bar < SECTIONS.intro.bars) return { name: "intro", barIn: bar, cycle: -1 };
+    const b = bar - SECTIONS.intro.bars;
+    const cycle = Math.floor(b / CYCLE_BARS);
+    let barIn = b % CYCLE_BARS;
+    for (const name of CYCLE){
+      if (barIn < SECTIONS[name].bars) return { name, barIn, cycle };
+      barIn -= SECTIONS[name].bars;
+    }
+  }
+
+  // Triads (plus octave) rather than the 7th chords the free mode uses: stabs
+  // and plucks sound cleaner and more "EDM" without the jazzy 7th on top.
+  function songChord(song, degree){
+    const d = DEGREES[degree];
+    const pc = (song.key + SCALE_OFFSETS[degree]) % 12;
+    let root = 48 + pc; if (root < 55) root += 12; // stab root lands in G3..F#4
+    const third = d.intervals[1], fifth = d.intervals[2];
+    const tones = [root, root + third, root + fifth, root + 12];
+    // 7 rungs over two octaves for the right-hand lead: every one is a chord tone.
+    const ladder = [root, root + third, root + fifth, root + 12, root + 12 + third, root + 12 + fifth, root + 24];
+    let bass = 36 + pc; if (bass > 43) bass -= 12;
+    const quality = fifth === 6 ? "dim" : (third === 3 ? "m" : "");
+    return { name: NOTE_NAMES[pc] + quality, tones, ladder, bass, bassName: midiToNoteName(bass) };
+  }
+
+  let bassSynth = null;
+  function ensureBass(){
+    if (bassSynth) return bassSynth;
+    ensureEffectsChain();
+    bassSynth = new Tone.MonoSynth({
+      oscillator: { type: "sawtooth" },
+      envelope: { attack: 0.004, decay: 0.18, sustain: 0.35, release: 0.08 },
+      filter: { Q: 1, type: "lowpass", rolloff: -24 },
+      filterEnvelope: { attack: 0.004, decay: 0.14, sustain: 0.2, release: 0.1, baseFrequency: 110, octaves: 3 },
+    });
+    bassSynth.volume.value = -7;
+    bassSynth.connect(pumpGain);
+    return bassSynth;
+  }
+
+  let songMode = true;        // guided drops (default) vs. the original free mode
+  let currentSongIndex = 0;
+  let songPlaying = false;
+  let songLoop = null;
+  let songStep = 0;
+  let songCurrentChord = null;
+  let songSectionName = null;
+
+  // Right hand's lead, written by processLandmarks, read by songTick.
+  const leadState = { present: false, fist: false, y: 0.5, speed: 0, lane: -1 };
+  let leadLastLane = -1;
+  let leadFlash = 0;       // UI: >0 right after a lead note fired
+  let leadPlayedLane = -1;
+
+  const LEAD_TOP_Y = 0.15, LEAD_BOTTOM_Y = 0.85; // palm height on screen mapped onto the 7 rungs
+  const LEAD_LANES = 7;
+  function leadLaneForY(y, prevLane){
+    const norm = clamp01((LEAD_BOTTOM_Y - y) / (LEAD_BOTTOM_Y - LEAD_TOP_Y));
+    let lane = Math.min(LEAD_LANES - 1, Math.floor(norm * LEAD_LANES));
+    // Hysteresis: stay on the previous rung until the palm is clearly past its
+    // edge, so a hand hovering on a boundary doesn't flip between two notes.
+    if (prevLane >= 0 && lane !== prevLane){
+      const lo = prevLane / LEAD_LANES - 0.03, hi = (prevLane + 1) / LEAD_LANES + 0.03;
+      if (norm > lo && norm < hi) lane = prevLane;
+    }
+    return lane;
+  }
+
+  function playLeadStep(time, s, chord){
+    if (!leadState.present || leadState.fist || leadState.lane < 0){ leadLastLane = -1; return; }
+    const lane = leadState.lane;
+    const moving = leadState.speed > 0.25, fast = leadState.speed > 1.1;
+    let play;
+    if (s % 2 === 0) play = lane !== leadLastLane || moving || s % 4 === 0; // still hand = quarters, moving = 8ths
+    else play = fast;                                                        // fast hand = 16ths
+    if (!play) return;
+    try { leadSynth.triggerAttackRelease(midiToNoteName(chord.ladder[lane]), fast ? "16n" : "8n", time, 0.7); } catch(e){}
+    leadLastLane = lane;
+    Tone.Draw.schedule(() => { leadFlash = 1; leadPlayedLane = lane; }, time);
+  }
+
+  function pump(time, depth){
+    const beat = 60 / Tone.Transport.bpm.value;
+    const g = pumpGain.gain;
+    g.cancelScheduledValues(time);
+    g.setValueAtTime(depth, time);
+    g.linearRampToValueAtTime(1, time + beat * 0.6);
+  }
+
+  const ARP_ORDER = [0, 1, 2, 3, 2, 1];
+
+  function songTick(time){
+    const song = SONGS[currentSongIndex];
+    const step = songStep++;
+    const bar = Math.floor(step / 16), s = step % 16;
+    const sec = sectionAtBar(bar);
+    const chord = songChord(song, song.prog[bar % song.prog.length]);
+    const inst = ensureInstrument();
+
+    if (s === 0) Tone.Draw.schedule(() => onSongBar(sec, chord), time);
+    if (s % 4 === 0) Tone.Draw.schedule(() => onSongBeat(sec, s / 4), time);
+
+    if (sec.name === "intro" || sec.name === "breakdown"){
+      if (sec.name === "breakdown" && sec.barIn === 0 && s === 0){
+        pumpGain.gain.cancelScheduledValues(time);
+        pumpGain.gain.setValueAtTime(1, time);
+      }
+      if (s === 0) try { padSynth.triggerAttackRelease(chord.tones.slice(0, 3), "1m", time, 0.9); } catch(e){}
+      if (s % 2 === 0 && (sec.name === "breakdown" || sec.barIn >= 1)){
+        const note = chord.tones[ARP_ORDER[(step / 2) % ARP_ORDER.length]];
+        try { inst.triggerAttackRelease(midiToNoteName(note + 12), "16n", time, 0.32); } catch(e){}
+      }
+      if (sec.name === "intro" && sec.barIn >= 2 && s % 4 === 2) hatClosedSynth.triggerAttackRelease("32n", time, 0.35);
+    }
+    else if (sec.name === "build"){
+      const total = SECTIONS.build.bars * 16;
+      const progress = (sec.barIn * 16 + s) / total;
+      const lastBar = sec.barIn === SECTIONS.build.bars - 1;
+      if (s === 0 || s === 8) Tone.Draw.schedule(() => { songAuto.build = progress; songAuto.gap = false; }, time);
+      if (lastBar && s >= 12){
+        // The gap: one beat of near-silence right before the drop.
+        if (s === 12){
+          const g = pumpGain.gain;
+          g.cancelScheduledValues(time);
+          g.setValueAtTime(g.getValueAtTime(time), time);
+          g.linearRampToValueAtTime(0, time + 0.03);
+          Tone.Draw.schedule(() => { songAuto.gap = true; }, time);
+        }
+        return;
+      }
+      if (s === 0 && sec.barIn < 6) try { padSynth.triggerAttackRelease(chord.tones.slice(0, 3), "1m", time, 0.9); } catch(e){}
+      const arp16 = sec.barIn >= 4;
+      if (arp16 || s % 2 === 0){
+        const note = chord.tones[ARP_ORDER[(arp16 ? step : step / 2) % ARP_ORDER.length]];
+        try { inst.triggerAttackRelease(midiToNoteName(note + 12), "16n", time, 0.3 + 0.5 * progress); } catch(e){}
+      }
+      if (sec.barIn < 6 && s % 4 === 0) kickSynth.triggerAttackRelease("C1", "8n", time);
+      if (sec.barIn < 6 && s % 4 === 2) hatOpenSynth.triggerAttackRelease("8n", time, 0.45);
+      // Snare roll that speeds up: quarters -> 8ths -> 16ths, rising in pitch.
+      const rollEvery = sec.barIn < 2 ? 0 : sec.barIn < 4 ? 4 : sec.barIn < 6 ? 2 : 1;
+      if (rollEvery && s % rollEvery === 0){
+        snareFilter.frequency.setValueAtTime(1000 + 4000 * progress, time);
+        snareSynth.triggerAttackRelease("32n", time, 0.35 + 0.65 * progress);
+      }
+    }
+    else if (sec.name === "drop"){
+      if (sec.barIn === 0 && s === 0){
+        snareFilter.frequency.setValueAtTime(1700, time);
+        triggerDropImpact(time, chord.bassName, !song.sub);
+        Tone.Draw.schedule(() => { songAuto.build = 0; songAuto.gap = false; onDropHit(); }, time);
+      }
+      const pattern = DRUM_PATTERNS[song.drum];
+      const fillBar = sec.barIn % 8 === 7;
+      triggerDrumStep(fillBar ? deriveFill(pattern) : pattern, s, time, true, song.sub ? chord.bassName : null);
+      if (s % 4 === 0) pump(time, 0.3);
+      if (song.stab.includes(s)){
+        try { inst.triggerAttackRelease(chord.tones.map(midiToNoteName), song.stabLen, time, 0.85); } catch(e){}
+      }
+      if (song.bass.includes(s)) bassSynth.triggerAttackRelease(chord.bassName, "16n", time, 0.9);
+    }
+
+    playLeadStep(time, s, chord);
+  }
+
+  // ---- Song UI: timeline, countdown, coach hints, drop celebration ----
+  const songBarEl = document.getElementById("songBar");
+  const songNameEl = document.getElementById("songName");
+  const songChordEl = document.getElementById("songChord");
+  const songTrackEl = document.getElementById("songTrack");
+  const songNextEl = document.getElementById("songNext");
+  const coachEl = document.getElementById("coach");
+
+  let beatFlash = 0, dropFlash = 0;
+  let confetti = [];
+
+  const COACH = {
+    intro: ["🖐️ Mano derecha: subila y bajala para tocar la melodía", "🖐️ Mano derecha: movela más rápido para tocar más notas"],
+    build: ["🌀 Mano izquierda: girá la muñeca para subir la tensión", "🌀 ¡Girá la izquierda! Se viene el drop"],
+    drop: ["☝️ Izquierda arriba = eco gigante", "👈 Izquierda al borde = stutter"],
+    breakdown: ["😌 Respirá… se viene otra subida"],
+  };
+
+  function renderSongTrack(inIntro){
+    const names = inIntro ? ["intro", ...CYCLE] : CYCLE;
+    songTrackEl.innerHTML = "";
+    names.forEach(name => {
+      const seg = document.createElement("div");
+      seg.className = "song-seg " + name;
+      seg.dataset.name = name;
+      seg.style.flex = SECTIONS[name].bars + " 1 0";
+      seg.innerHTML = `<div class="fill"></div><span class="lbl">${SECTIONS[name].label}</span>`;
+      songTrackEl.appendChild(seg);
+    });
+    songTrackEl.dataset.intro = inIntro ? "1" : "0";
+  }
+
+  function onSongBar(sec, chord){
+    songCurrentChord = chord;
+    songChordEl.textContent = chord.name;
+    if (sec.name !== songSectionName){
+      songSectionName = sec.name;
+      const inIntro = sec.name === "intro";
+      if ((songTrackEl.dataset.intro === "1") !== inIntro) renderSongTrack(inIntro);
+      if (sec.name === "build") setCaption("Subida", { hideAfter: 1800 });
+      if (sec.name === "breakdown") setCaption("Pausa", { hideAfter: 1800 });
+    }
+    // A new tip every 4 bars, so a long drop walks through every gesture.
+    if (sec.barIn % 4 === 0){
+      const tips = COACH[sec.name];
+      coachEl.textContent = tips[(Math.max(0, sec.cycle) + sec.barIn / 4) % tips.length];
+    }
+    if (sec.name === "build" && sec.barIn === SECTIONS.build.bars - 2){
+      coachEl.textContent = "🙌 ¡Preparate! Levantá las manos para el drop";
+    }
+  }
+
+  function onSongBeat(sec, beat){
+    if (sec.name === "drop") beatFlash = 1;
+    if (sec.name === "build" && sec.barIn === SECTIONS.build.bars - 1){
+      if (beat < 3) setCaption(String(3 - beat), { big: true });
+      else setCaption("🙌", { big: true, gold: true });
+    }
+  }
+
+  let lastHandsUp = false; // set by processLandmarks: any hand's wrist high in the frame
+  function onDropHit(){
+    dropFlash = 1;
+    const perfect = lastHandsUp;
+    setCaption(perfect ? "¡PERFECTO!" : "¡DROP!", { big: true, gold: perfect, hideAfter: 2200 });
+    spawnConfetti(perfect ? 140 : 70);
+  }
+
+  function spawnConfetti(n){
+    const w = canvasEl.width || 640, h = canvasEl.height || 480;
+    const colors = ["#ffcf56", "#6be7ff", "#ff6fa5", "#7af5c4", "#fdf6ee"];
+    for (let i = 0; i < n; i++){
+      confetti.push({
+        x: w / 2 + (Math.random() - 0.5) * w * 0.3, y: h * 0.45,
+        vx: (Math.random() - 0.5) * 16, vy: -6 - Math.random() * 12,
+        size: 5 + Math.random() * 7, color: colors[i % colors.length], life: 1,
+      });
+    }
+    if (confetti.length > 260) confetti.splice(0, confetti.length - 260);
+  }
+
+  // Per animation frame: where the playhead actually is (audio clock, not the
+  // look-ahead scheduling clock), for the timeline fill and the countdown text.
+  function updateSongUI(){
+    if (!songPlaying) return;
+    const ticks = Math.max(0, Tone.Transport.getTicksAtTime(Tone.context.currentTime));
+    const barsF = ticks / (Tone.Transport.PPQ * 4);
+    const bar = Math.floor(barsF);
+    const sec = sectionAtBar(bar);
+    const within = (sec.barIn + (barsF - bar)) / SECTIONS[sec.name].bars;
+    const order = songTrackEl.dataset.intro === "1" ? ["intro", ...CYCLE] : CYCLE;
+    const curIdx = order.indexOf(sec.name);
+    songTrackEl.querySelectorAll(".song-seg").forEach((seg, i) => {
+      const fill = seg.firstChild;
+      const w = i < curIdx ? 100 : i === curIdx ? within * 100 : 0;
+      fill.style.width = w.toFixed(1) + "%";
+      seg.classList.toggle("now", i === curIdx);
+    });
+    const barsLeft = SECTIONS[sec.name].bars - sec.barIn - (barsF - bar);
+    let next;
+    if (sec.name === "intro") next = `El drop llega en <b>${Math.ceil(barsLeft + SECTIONS.build.bars)}</b> compases`;
+    else if (sec.name === "build") next = barsLeft <= 1 ? "<b>¡AHÍ VIENE!</b>" : `DROP en <b>${Math.ceil(barsLeft)}</b> compases`;
+    else if (sec.name === "drop") next = "🔥 DROP · jugá con los efectos";
+    else next = `Otra subida en <b>${Math.ceil(barsLeft)}</b>`;
+    if (songNextEl.innerHTML !== next) songNextEl.innerHTML = next;
+  }
+
+  function stopSongLoop(){
+    if (songLoop){ songLoop.stop(0); songLoop.dispose(); songLoop = null; }
+  }
+
+  function startSong(){
+    const song = SONGS[currentSongIndex];
+    // Free-mode layers share the Transport and the instruments; clear them out.
+    stopDrums(); stopProgression(); stopSolo(); updateChordState(-1); stopArpeggio();
+    soundSelect.value = song.sound;
+    rootSelect.value = String(song.key);
+    renderScaleTable();
+    ensureInstrument(); ensurePad(); ensureLead(); ensureDrumKit(); ensureBass(); ensureGateLoop();
+    stopSongLoop();
+    if (padSynth) padSynth.releaseAll();
+    Tone.Transport.stop();
+    Tone.Transport.position = 0;
+    Tone.Transport.bpm.value = song.bpm;
+    echoDelay.delayTime.value = (60 / song.bpm) * 0.75; // dotted 8th at this song's tempo
+    pumpGain.gain.cancelScheduledValues(0);
+    pumpGain.gain.value = 1;
+    songStep = 0; songSectionName = null;
+    songAuto.build = 0; songAuto.gap = false;
+    songLoop = new Tone.Loop(songTick, "16n").start(0);
+    Tone.Transport.start("+0.05");
+    songPlaying = true;
+    songNameEl.textContent = `${song.emoji} ${song.name} · ${song.bpm} BPM`;
+    songChordEl.textContent = "—";
+    renderSongTrack(true);
+    songBarEl.style.display = "flex";
+    updatePickerUI();
+    ensureFrameLoop();
+  }
+
+  function stopSong(){
+    if (!songPlaying && !songLoop) return;
+    stopSongLoop();
+    Tone.Transport.stop();
+    if (pumpGain){ pumpGain.gain.cancelScheduledValues(0); pumpGain.gain.value = 1; }
+    if (padSynth) padSynth.releaseAll();
+    songPlaying = false;
+    songAuto.build = 0; songAuto.gap = false;
+    songBarEl.style.display = "none";
+    coachEl.textContent = "";
+    setCaption(null);
+  }
 
   // ---------- Hand tracking (MediaPipe Hands) ----------
   const videoEl = document.getElementById("video");
@@ -1419,12 +1926,18 @@
   // shape: the hand on the left of the (mirrored) frame is always the FX hand, the
   // one on the right is always the piano hand. Raw MediaPipe landmarks are in the
   // UNMIRRORED camera frame, so on-screen-left corresponds to the LARGER raw x.
+  // A lone hand near the middle keeps the role it already had: before, sliding
+  // the FX hand a little past center silently turned it into the piano hand.
+  let lastSingleRole = null;
   function assignHandRoles(handsArray){
-    if (handsArray.length === 0) return { chordHand: null, fxHand: null };
+    if (handsArray.length === 0){ lastSingleRole = null; return { chordHand: null, fxHand: null }; }
     if (handsArray.length === 1){
       const x = handsArray[0][0].x;
-      return x > 0.5 ? { chordHand: null, fxHand: handsArray[0] } : { chordHand: handsArray[0], fxHand: null };
+      let role = x > 0.58 ? "fx" : x < 0.42 ? "chord" : (lastSingleRole || (x > 0.5 ? "fx" : "chord"));
+      lastSingleRole = role;
+      return role === "fx" ? { chordHand: null, fxHand: handsArray[0] } : { chordHand: handsArray[0], fxHand: null };
     }
+    lastSingleRole = null;
     const sorted = [...handsArray].sort((a, b) => b[0].x - a[0].x);
     return { fxHand: sorted[0], chordHand: sorted[sorted.length - 1] };
   }
@@ -1516,11 +2029,7 @@
   // radius, so natural hand tremor while holding still doesn't count). This
   // yields a continuous 0-1 "spin" amount, not a hard on/off gate, so the
   // arpeggio layer can fade in and out smoothly instead of snapping.
-  // Motion buffers are per-hand (chord hand for the arpeggiator, FX hand for the
-  // pan effect below) so both hands can be doing their own independent gesture
-  // at once without reading each other's history.
   let motionBuffer = []; // chord hand
-  let fxMotionBuffer = []; // FX hand
   const MOTION_BUFFER_MS = 900;
   const MOTION_MIN_RADIUS = 0.045; // normalized units; filters out jitter
   const MOTION_FULL_SPIN_DEG = 200; // rotation swept within the window that counts as "full" (100%) spin
@@ -1532,7 +2041,6 @@
   }
 
   function resetMotionBuffer(){ motionBuffer = []; }
-  function resetFxMotionBuffer(){ fxMotionBuffer = []; }
 
   function detectSpinIntensity(buf){
     if (buf.length < 6) return 0;
@@ -1560,35 +2068,6 @@
     return Math.min(1, deg / MOTION_FULL_SPIN_DEG);
   }
 
-  // ---------- Lateral panning detector (FX hand's reverb gesture) ----------
-  // Back-and-forth sideways sweeps (mostly x movement, at least one direction
-  // reversal) as opposed to a loop or a simple drift.
-  const LATERAL_MIN_RANGE = 0.09; // normalized units; filters out small jitter
-  const LATERAL_FULL_RANGE = 0.32; // sweep width that counts as "full" (100%) intensity
-  const LATERAL_MAX_Y_RATIO = 0.6; // if vertical travel is this close to horizontal, it's not a clean pan
-
-  function detectLateralIntensity(buf){
-    if (buf.length < 6) return 0;
-    const xs = buf.map(p => p.x);
-    const ys = buf.map(p => p.y);
-    const xRange = Math.max(...xs) - Math.min(...xs);
-    const yRange = Math.max(...ys) - Math.min(...ys);
-    if (xRange < LATERAL_MIN_RANGE) return 0;
-    if (yRange > xRange * LATERAL_MAX_Y_RATIO) return 0;
-
-    let reversals = 0, lastDir = 0;
-    for (let i = 1; i < xs.length; i++){
-      const d = xs[i] - xs[i - 1];
-      if (Math.abs(d) < 0.002) continue;
-      const dir = d > 0 ? 1 : -1;
-      if (lastDir !== 0 && dir !== lastDir) reversals++;
-      lastDir = dir;
-    }
-    if (reversals < 1) return 0; // require at least one back-and-forth, not just a drift
-
-    return Math.min(1, xRange / LATERAL_FULL_RANGE);
-  }
-
   // ---------- Arpeggio level smoothing + UI (mirrors the distortion control's easing) ----------
   const arpBar = document.getElementById("arpBar");
   const arpValueEl = document.getElementById("arpValue");
@@ -1609,11 +2088,42 @@
     arpTag.classList.toggle("on", pct > 3);
   }
 
+  // Latest canvas mapping from drawSceneFrame (object-fit:cover + mirror), so
+  // hand positions can be judged where the user SEES them on screen.
+  const viewMap = { cw: 640, ch: 480, dx: 0, dy: 0, drawW: 640, drawH: 480 };
+  function toView(lm){
+    return {
+      x: (viewMap.cw - (viewMap.dx + lm.x * viewMap.drawW)) / viewMap.cw,
+      y: (viewMap.dy + lm.y * viewMap.drawH) / viewMap.ch,
+    };
+  }
+  let lastFxHandLm = null, lastChordHandLm = null;
+
+  let prevLeadPos = null;
+  function updateLeadState(chordHand, totalFingers){
+    if (!chordHand){
+      leadState.present = false; leadState.lane = -1; leadState.speed = 0; prevLeadPos = null;
+      return;
+    }
+    const palm = toView(chordHand[9]); // middle-finger knuckle: steadier than the wrist, and it's where the hand "is"
+    const t = performance.now();
+    if (prevLeadPos){
+      const dt = Math.max(1, t - prevLeadPos.t) / 1000;
+      const v = Math.hypot(palm.x - prevLeadPos.x, palm.y - prevLeadPos.y) / dt;
+      leadState.speed += (v - leadState.speed) * 0.5;
+    }
+    prevLeadPos = { x: palm.x, y: palm.y, t };
+    leadState.present = true;
+    leadState.fist = totalFingers === 0;
+    leadState.y = palm.y;
+    leadState.lane = leadLaneForY(palm.y, leadState.lane);
+  }
+
   function processLandmarks(handsArray){
     const numHands = handsArray.length;
     handsCountEl.textContent = numHands + (numHands === 1 ? " mano" : " manos");
     statusText.textContent = numHands > 0
-      ? `Cámara activa · ${numHands} mano${numHands === 1 ? "" : "s"} detectada${numHands === 1 ? "" : "s"}`
+      ? `Cámara activa · ${numHands} mano${numHands === 1 ? "" : "s"}`
       : "Cámara activa · buscando manos…";
 
     const { chordHand, fxHand } = assignHandRoles(handsArray);
@@ -1632,10 +2142,8 @@
     fingerCountEl.textContent = totalFingers + " dedos detectados" + (debugRatios ? " · " + debugRatios : "");
 
     let spinIntensity = 0;
-    let chordWristY = null;
-    if (chordHand){
+    if (chordHand && !songMode){
       const wrist = chordHand[0];
-      chordWristY = wrist.y;
       pushMotionSample(motionBuffer, wrist.x, wrist.y);
       spinIntensity = detectSpinIntensity(motionBuffer);
     } else {
@@ -1643,15 +2151,16 @@
     }
     updateArpIntensity(spinIntensity);
 
-    let fxLateralIntensity = 0;
-    if (fxHand){
-      const fxWrist = fxHand[0];
-      pushMotionSample(fxMotionBuffer, fxWrist.x, fxWrist.y);
-      fxLateralIntensity = detectLateralIntensity(fxMotionBuffer);
-    } else {
-      resetFxMotionBuffer();
+    updateDropFx(fxInfo, !!fxHand, fxHand ? toView(fxHand[0]) : null);
+    lastHandsUp = handsArray.some(h => toView(h[0]).y < 0.4);
+    lastFxHandLm = fxHand;
+    lastChordHandLm = chordHand;
+
+    // Guided drops: the right hand is the lead (see playLeadStep), not chords.
+    if (songMode){
+      updateLeadState(chordHand, totalFingers);
+      return;
     }
-    updateDropFx(fxInfo, !!fxHand, chordWristY, fxLateralIntensity);
 
     // Right hand only now (fixed roles): closed fist FIRES the 8-bar solo (see
     // triggerSolo — it's a background layer, doesn't block chords). Finger count
@@ -1681,7 +2190,7 @@
 
   // Cheap: paints the current video frame + last known hand skeleton(s) every
   // animation frame, so the picture stays smooth regardless of detection speed.
-  function drawSceneFrame(){
+  function drawSceneFrame(dtMs){
     const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     const cw = canvasEl.clientWidth || 640;
     const ch = canvasEl.clientHeight || 480;
@@ -1701,6 +2210,8 @@
       dx = (cw - drawW) / 2;
       dy = (ch - drawH) / 2;
     }
+    viewMap.cw = cw; viewMap.ch = ch; viewMap.dx = dx; viewMap.dy = dy;
+    viewMap.drawW = drawW; viewMap.drawH = drawH;
 
     ctx.translate(cw, 0);
     ctx.scale(-1, 1); // mirror for a natural selfie view
@@ -1714,6 +2225,114 @@
     });
 
     ctx.restore();
+    drawOverlays(cw, ch, dtMs);
+  }
+
+  // Everything drawn on top of the video, in plain (unmirrored) screen space.
+  function drawOverlays(cw, ch, dtMs){
+    const k = dtMs / 16;
+    if (dropFlash > 0.01){
+      ctx.fillStyle = `rgba(255,255,255,${(dropFlash * 0.55).toFixed(3)})`;
+      ctx.fillRect(0, 0, cw, ch);
+      dropFlash *= Math.pow(0.88, k);
+    } else dropFlash = 0;
+    if (beatFlash > 0.01){
+      ctx.strokeStyle = `rgba(255,111,165,${(beatFlash * 0.75).toFixed(3)})`;
+      ctx.lineWidth = 16;
+      ctx.strokeRect(0, 0, cw, ch);
+      beatFlash *= Math.pow(0.84, k);
+    } else beatFlash = 0;
+
+    if (confetti.length){
+      confetti = confetti.filter(p => {
+        p.vy += 0.45 * k; p.x += p.vx * k; p.y += p.vy * k; p.vx *= Math.pow(0.99, k);
+        p.life -= 0.007 * k;
+        if (p.life <= 0 || p.y > ch + 20) return false;
+        ctx.globalAlpha = Math.min(1, p.life * 2);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
+        return true;
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    if (cameraActive && lastFxHandLm) drawFxGuides(cw, ch);
+    if (songMode && songPlaying && lastChordHandLm && songCurrentChord) drawLeadLanes(cw, ch, k);
+  }
+
+  function drawLabel(text, x, y, color, align = "left", outline = true){
+    ctx.font = "700 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+    if (outline){
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(10,7,22,.85)";
+      ctx.strokeText(text, x, y);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+  }
+
+  // Left hand: the two position zones drawn where they are, plus a meter per
+  // effect next to the hand — so you can SEE each gesture doing something.
+  function drawFxGuides(cw, ch){
+    const edgeX = edgeZone().start * cw;
+    ctx.fillStyle = `rgba(255,111,165,${(0.07 + fxLevel.edge * 0.3).toFixed(3)})`;
+    ctx.fillRect(0, 0, edgeX, ch);
+    ctx.setLineDash([8, 8]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,111,165,.7)";
+    ctx.beginPath(); ctx.moveTo(edgeX, 0); ctx.lineTo(edgeX, ch); ctx.stroke();
+    const liftY = LIFT_START_Y * ch;
+    ctx.strokeStyle = `rgba(107,231,255,${(0.45 + fxLevel.lift * 0.55).toFixed(3)})`;
+    ctx.beginPath(); ctx.moveTo(0, liftY); ctx.lineTo(cw * 0.5, liftY); ctx.stroke();
+    ctx.setLineDash([]);
+    drawLabel("↑ ECO", Math.max(edgeX + 10, 12), liftY - 14, "#6be7ff");
+    drawLabel("← STUTTER", 10, ch * 0.72, "#ff6fa5");
+
+    const palm = toView(lastFxHandLm[9]);
+    let hx = palm.x * cw + 46, hy = palm.y * ch - 34;
+    hx = Math.min(Math.max(hx, 8), cw - 150);
+    hy = Math.min(Math.max(hy, songPlaying ? 180 : 8), ch - 70); // never under the song timeline
+    const rows = [["↻ Tensión", fxLevel.rot, "#ffcf56"], ["↑ Eco", fxLevel.lift, "#6be7ff"], ["← Stutter", fxLevel.edge, "#ff6fa5"]];
+    ctx.fillStyle = "rgba(34,26,61,.82)";
+    ctx.fillRect(hx - 6, hy - 6, 150, rows.length * 22 + 8);
+    rows.forEach(([label, v, color], i) => {
+      const y = hy + i * 22;
+      drawLabel(label, hx, y + 7, v > 0.05 ? color : "#c3b8e6");
+      ctx.fillStyle = "rgba(10,7,22,.9)";
+      ctx.fillRect(hx + 80, y + 2, 58, 10);
+      ctx.fillStyle = color;
+      ctx.fillRect(hx + 80, y + 2, 58 * v, 10);
+    });
+  }
+
+  // Right hand in a guided drop: the 7 rungs of the lead, with the notes of
+  // the chord that's sounding right now, so "higher hand = higher note" is
+  // obvious at a glance.
+  function drawLeadLanes(cw, ch, k){
+    const w = 50, x = cw - w - 10;
+    const top = LEAD_TOP_Y * ch, bottom = LEAD_BOTTOM_Y * ch;
+    const laneH = (bottom - top) / LEAD_LANES;
+    for (let i = 0; i < LEAD_LANES; i++){
+      const y = bottom - (i + 1) * laneH;
+      const active = i === leadState.lane && !leadState.fist;
+      const flashing = i === leadPlayedLane && leadFlash > 0.05;
+      ctx.fillStyle = flashing ? `rgba(122,245,196,${(0.5 + leadFlash * 0.5).toFixed(3)})`
+        : active ? "rgba(255,207,86,.85)" : "rgba(34,26,61,.6)";
+      ctx.fillRect(x, y + 2, w, laneH - 4);
+      const name = midiToNoteName(songCurrentChord.ladder[i]).replace(/-?\d+$/, "");
+      const lit = active || flashing;
+      drawLabel(name, x + w / 2, y + laneH / 2, lit ? "#0a0716" : "#fdf6ee", "center", !lit);
+    }
+    const palm = toView(lastChordHandLm[9]);
+    ctx.strokeStyle = leadState.fist ? "rgba(195,184,230,.6)" : "#ffcf56";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(palm.x * cw, palm.y * ch, 16 + leadFlash * 16, 0, Math.PI * 2);
+    ctx.stroke();
+    if (leadState.fist) drawLabel("✊ silencio", palm.x * cw, palm.y * ch + 34, "#c3b8e6", "center");
+    leadFlash *= Math.pow(0.82, k);
   }
 
   // Detection is throttled independently of the (smooth, 60fps) draw loop below.
@@ -1734,11 +2353,22 @@
   let detectionCostEma = 0;
   let lastDetectionTime = 0;
 
+  // One animation-frame loop for everything: hand detection (when the camera
+  // is on), effect easing, the song timeline and the canvas. It also runs
+  // with the camera off while a guided drop plays, so the song never stalls
+  // waiting on the camera or the hand model.
+  let lastFrameTime = 0;
+  function ensureFrameLoop(){
+    if (!renderLoopId){ lastFrameTime = 0; renderLoopId = requestAnimationFrame(renderLoop); }
+  }
+
   function renderLoop(){
-    if (!cameraActive) return;
+    if (!cameraActive && !songPlaying){ renderLoopId = null; return; }
 
     const now = performance.now();
-    if (handLandmarker && videoEl.readyState >= 2 && videoEl.videoWidth > 0
+    const dt = lastFrameTime ? Math.min(100, now - lastFrameTime) : 16;
+    lastFrameTime = now;
+    if (cameraActive && handLandmarker && videoEl.readyState >= 2 && videoEl.videoWidth > 0
         && videoEl.currentTime !== lastVideoTime && now - lastDetectionTime >= detectionIntervalMs){
       lastVideoTime = videoEl.currentTime;
       lastDetectionTime = now;
@@ -1762,11 +2392,16 @@
       }
     }
 
-    drawSceneFrame();
+    applyFx(dt);
+    updateSongUI();
+    drawSceneFrame(dt);
     renderLoopId = requestAnimationFrame(renderLoop);
   }
 
+  let cameraStarting = false;
   async function startCamera(){
+    if (cameraActive || cameraStarting) return;
+    cameraStarting = true;
     errorBox.style.display = "none";
     startBtn.disabled = true;
     startBtn.textContent = "Iniciando…";
@@ -1812,12 +2447,13 @@
       detectionCostEma = 0;
       statusDot.classList.add("live");
       statusText.textContent = "Cámara activa · buscando manos…";
-      startBtn.textContent = "Detener cámara";
+      startBtn.textContent = "⏹ Parar";
       startBtn.disabled = false;
       startBtn.classList.remove("primary");
-      startBtn.onclick = stopCamera;
+      startBtn.onclick = stopAll;
+      cameraStarting = false;
 
-      renderLoopId = requestAnimationFrame(renderLoop);
+      ensureFrameLoop();
 
       watchdogTimer = setTimeout(() => {
         if (!firstResultReceived){
@@ -1834,10 +2470,12 @@
       } else if (err && err.name === "NotReadableError"){
         msg = "La cámara está ocupada por otra aplicación (cierra Zoom/Teams/otra pestaña que la esté usando) e intenta de nuevo.";
       }
-      showError("No se pudo iniciar: " + msg);
+      showError("No se pudo iniciar la cámara: " + msg);
       startBtn.disabled = false;
-      startBtn.textContent = "Reintentar";
+      startBtn.textContent = "Reintentar cámara";
+      startBtn.onclick = startExperience;
       cameraActive = false;
+      cameraStarting = false;
       if (videoEl.srcObject){
         videoEl.srcObject.getTracks().forEach(t => t.stop());
         videoEl.srcObject = null;
@@ -1845,7 +2483,11 @@
     }
   }
 
-  function stopCamera(){
+  // Stops everything: camera, guided song, free-mode layers, and every effect.
+  function stopAll(){
+    stopSong();
+    stopDrums();
+    stopProgression();
     cameraActive = false;
     if (renderLoopId){ cancelAnimationFrame(renderLoopId); renderLoopId = null; }
     if (watchdogTimer){ clearTimeout(watchdogTimer); watchdogTimer = null; }
@@ -1855,27 +2497,119 @@
     }
     lastHandsInfo = [];
     resetMotionBuffer();
-    resetFxMotionBuffer();
     updateArpIntensity(0);
     stopSolo();
     handGoneSince = null;
     pendingDegree = null;
     updateChordState(-1);
+    updateDropFx(null, false, null);
+    updateLeadState(null, 0);
+    lastFxHandLm = lastChordHandLm = null;
+    fxLevel.rot = fxLevel.lift = fxLevel.edge = 0;
+    applyFx(16);
+    confetti = [];
+    Tone.Transport.stop();
     statusDot.classList.remove("live");
     statusText.textContent = "Cámara apagada";
     handsCountEl.textContent = "0 manos";
     fingerCountEl.textContent = "0 dedos detectados";
-    startBtn.textContent = "Iniciar cámara";
+    startBtn.textContent = "▶ Empezar";
     startBtn.classList.add("primary");
-    startBtn.onclick = startCamera;
+    startBtn.onclick = startExperience;
+    pickerBtn.style.display = "none";
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    openPicker();
   }
+
+  // ---------- Start flow + drop picker ----------
+  const pickerEl = document.getElementById("picker");
+  const songGridEl = document.getElementById("songGrid");
+  const pickerBtn = document.getElementById("pickerBtn");
+
+  async function startExperience(){
+    if (!audioStarted){ await Tone.start(); audioStarted = true; }
+    closePicker();
+    pickerBtn.style.display = "";
+    if (songMode){
+      if (!songPlaying) startSong();
+    } else {
+      ensureInstrument(); ensurePad(); ensureLead(); ensureDrumKit(); ensureGateLoop();
+      ensureTransportRunning(); // the stutter is on the Transport grid
+    }
+    startCamera();
+  }
+
+  function renderPicker(){
+    songGridEl.innerHTML = "";
+    SONGS.forEach((song, i) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "song-chip";
+      chip.dataset.idx = i;
+      chip.innerHTML = `<span class="emo">${song.emoji}</span>${song.name}<span class="vibe">${song.vibe} · ${song.bpm} BPM</span>`;
+      chip.onclick = () => chooseSong(i);
+      songGridEl.appendChild(chip);
+    });
+    const free = document.createElement("button");
+    free.type = "button";
+    free.className = "song-chip free";
+    free.dataset.idx = "free";
+    free.innerHTML = `<span class="emo">🎹</span><span class="vibe">Modo libre: tocás vos los acordes con los dedos (para los que ya saben)</span>`;
+    free.onclick = chooseFree;
+    songGridEl.appendChild(free);
+    updatePickerUI();
+  }
+
+  function updatePickerUI(){
+    songGridEl.querySelectorAll(".song-chip").forEach(chip => {
+      const idx = chip.dataset.idx;
+      chip.classList.toggle("active", songMode ? idx === String(currentSongIndex) : idx === "free");
+    });
+  }
+
+  function chooseSong(i){
+    const wasFree = !songMode;
+    currentSongIndex = i;
+    songMode = true;
+    if (wasFree){ stopDrums(); stopProgression(); stopSolo(); updateChordState(-1); stopArpeggio(); }
+    if (songPlaying) startSong(); // switching songs restarts from the intro
+    updatePickerUI();
+    startExperience();
+  }
+
+  function chooseFree(){
+    songMode = false;
+    stopSong();
+    updateLeadState(null, 0);
+    updatePickerUI();
+    startExperience();
+  }
+
+  function openPicker(){ updatePickerUI(); pickerEl.style.display = "flex"; }
+  function closePicker(){ pickerEl.style.display = "none"; }
+  pickerBtn.onclick = openPicker;
+  songNameEl.onclick = openPicker;
+  // Tapping the dimmed background closes the picker once something is running.
+  pickerEl.addEventListener("click", (e) => {
+    if (e.target === pickerEl && (songPlaying || cameraActive)) closePicker();
+  });
+  renderPicker();
 
   // Preload the model (~7MB) as soon as the page opens, so it's likely already
   // warm by the time the user clicks "Iniciar cámara".
   ensureHandLandmarker().catch(() => {}); // errors are already surfaced via showError
 
-  startBtn.onclick = startCamera;
+  startBtn.onclick = startExperience;
+
+  // Test hook (only with ?debug in the URL): lets an automated browser feed
+  // synthetic hand landmarks and read back the effect levels.
+  if (/[?&]debug\b/.test(location.search)){
+    window.__dc = {
+      processLandmarks, fxLevel, fxTarget, songAuto, leadState, sectionAtBar, SONGS, viewMap,
+      get songStep(){ return songStep; },
+      get master(){ return masterLimiter; },
+    };
+  }
 })();
 </script>
 </body>
