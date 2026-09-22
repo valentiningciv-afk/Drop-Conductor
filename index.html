@@ -267,7 +267,7 @@
       <div class="picker-card glass">
         <h1 class="pixel-text">Elegí tu drop</h1>
         <p>La canción avanza sola hacia el drop. Vos le das onda con las manos:
-          la <b>derecha</b> toca la melodía (siempre suena bien), la <b>izquierda</b> maneja los efectos.</p>
+          la <b>derecha</b> toca la melodía (siempre suena bien, y con los dedos cambiás el estilo), la <b>izquierda</b> maneja los efectos.</p>
         <div class="song-grid" id="songGrid"></div>
       </div>
     </div>
@@ -290,6 +290,8 @@
           <option value="pluck">Pluck trance</option>
           <option value="futurebass">Future bass</option>
           <option value="bells">Campanas</option>
+          <option value="organ">Órgano house</option>
+          <option value="keys">Keys deep house</option>
           <option value="piano">Piano acústico</option>
         </select>
       </div>
@@ -324,7 +326,11 @@
         ves en qué parte estás y cuánto falta para el drop.<br><br>
         <b>Mano derecha = melodía.</b> Subila y bajala: cada altura es una nota
         del acorde que está sonando, así que nunca desafina, y cae siempre a
-        tiempo. Quieta late en negras, moviéndola toca más rápido. Puño = silencio.<br><br>
+        tiempo. Quieta late en negras, moviéndola toca más rápido.<br>
+        Con los dedos cambiás el estilo en cualquier momento: <b>mano abierta</b> =
+        melodía, <b>2 dedos</b> = arpegio que corre, <b>3 dedos</b> = acordes,
+        <b>1 dedo</b> = notas largas, <b>puño</b> = silencio. Cada vez que vuelve el
+        drop se suma una capa nueva.<br><br>
         <b>Mano izquierda = efectos</b>, los tres a la vez:<br>
         ↻ <b>girá la muñeca</b> → tensión (filtro que sube + whoosh + distorsión).<br>
         ↑ <b>subila</b> por encima de la línea punteada → eco gigante y más reverb
@@ -363,7 +369,7 @@
     <!-- hidden gallery: selection UI lives here, opened from the drum name in the dock -->
     <div id="drumGalleryPanel" class="info-panel glass" style="display:none">
       <div class="info-panel-head">
-        <h2>Batería (EDM progresivo, 95-115 BPM)</h2>
+        <h2>Batería (EDM y house, 95-126 BPM)</h2>
         <button id="drumGalleryCloseBtn" class="icon-btn" aria-label="Cerrar">✕</button>
       </div>
       <div class="drum-gallery" id="drumGallery"></div>
@@ -638,7 +644,6 @@
       envelope: { attack: 0.004, decay: 1.6, sustain: 0.06, release: 1.8 },
       modulationEnvelope: { attack: 0.004, decay: 0.35, sustain: 0.02, release: 0.6 },
     }),
-  };
 
   // Level-matched to the supersaw so switching sounds isn't also a volume jump.
   // These were measured, not guessed: an offline render of a held chord with the
@@ -646,7 +651,27 @@
   // around the supersaw's 0.78 and still left headroom under the -1 dB limiter.
   // FM voices come out much quieter than a filtered saw at the same setting,
   // which is why these numbers sit *above* the supersaw's -4 dB rather than below.
-  const EXTRA_SYNTH_VOLUMES = { pluck: -6, futurebass: -1, bells: -2 };
+    // House organ: a short, percussive additive tone (the classic M1-style
+    // stab of tech house). A plain oscillator with a few partials and no
+    // filter, so it's the cheapest voice here.
+    organ: () => new Tone.PolySynth(Tone.Synth, {
+      maxPolyphony: 6,
+      oscillator: { type: "custom", partials: [1, 0.7, 0.35, 0.3, 0.12, 0.15, 0, 0.08] },
+      envelope: { attack: 0.004, decay: 0.28, sustain: 0.35, release: 0.2 },
+    }),
+    // Electric-piano keys for deep house: 1:1 FM with a fast-decaying
+    // modulator, so each note starts with a soft "tine" and settles warm.
+    keys: () => new Tone.PolySynth(Tone.FMSynth, {
+      maxPolyphony: 6,
+      harmonicity: 1,
+      modulationIndex: 3.2,
+      oscillator: { type: "sine" },
+      modulation: { type: "sine" },
+      envelope: { attack: 0.004, decay: 1.4, sustain: 0.3, release: 1.0 },
+      modulationEnvelope: { attack: 0.002, decay: 0.3, sustain: 0.12, release: 0.6 },
+    }),
+  };
+  const EXTRA_SYNTH_VOLUMES = { pluck: -6, futurebass: -1, bells: -2, organ: -10.5, keys: -3 };
 
   const extraSynths = {}; // preset name -> built instance (lazily populated)
 
@@ -736,12 +761,19 @@
     { name: "Progressive Anthem", bpm: 114, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[14],        clap:[4,12] },
     { name: "Club Stomper",       bpm: 113, kick:[0,4,8,12],       snare:[4,12],   hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[4,12],      clap:[4,12] },
     { name: "Festival Build",     bpm: 115, kick:[0,4,8,12],       snare:[4,8,12], hatClosed:[0,2,4,6,8,10,12,14], hatOpen:[2,6,10,14], clap:[4,8,12] },
+    // House grooves (used by the tech/deep house drops): no snare, clap on 2
+    // and 4, off-beat open hats and a pitched percussion layer. Their swing
+    // comes from the song (Transport.swing), not from the pattern.
+    { name: "Tech House Groove",  bpm: 125, kick:[0,4,8,12],       snare:[],       hatClosed:[0,1,3,4,5,7,8,9,11,12,13,15], hatOpen:[2,6,10,14], clap:[4,12], perc:[3,7,10,15] },
+    { name: "Minimal Roll",       bpm: 126, kick:[0,4,8,12],       snare:[],       hatClosed:[1,3,5,7,9,11,13,15], hatOpen:[2,6,10,14], clap:[4,12], perc:[6,11,14] },
+    { name: "Deep House Swing",   bpm: 120, kick:[0,4,8,12],       snare:[],       hatClosed:[0,4,8,12],           hatOpen:[2,6,10,14], clap:[4,12], perc:[7,15] },
   ];
 
   function deriveFill(p){
     const keepEarly = arr => arr.filter(s => s < 12);
     return {
       kick: p.kick,
+      perc: keepEarly(p.perc || []),
       snare: [...keepEarly(p.snare), 12, 13, 14, 15],
       hatClosed: keepEarly(p.hatClosed),
       hatOpen: keepEarly(p.hatOpen),
@@ -765,7 +797,7 @@
   // Closed and open hats now each get their own synth, so they can never collide.
   let drumBus = null, kickSynth = null, snareSynth = null, clapSynth = null;
   let hatClosedSynth = null, hatOpenSynth = null;
-  let subSynth = null, rideSynth = null;
+  let subSynth = null, rideSynth = null, percSynth = null;
   let impactNoise = null, impactKick = null;
   let snareFilter = null; // kept so the guided build can sweep the snare roll's pitch up
 
@@ -833,6 +865,13 @@
     }).connect(rideFilter);
     rideSynth.volume.value = -11;
 
+    // Short pitched "rim/conga" for the house patterns' percussion layer.
+    percSynth = new Tone.MembraneSynth({
+      pitchDecay: 0.012, octaves: 2.5,
+      envelope: { attack: 0.001, decay: 0.09, sustain: 0 },
+    }).connect(drumBus);
+    percSynth.volume.value = -9;
+
     // Impact hit: fires once at the very top of every drop section — a noise
     // "crash" through the SAME shared reverb (not a second one) plus a doubled
     // sub/kick. This one-shot is what actually makes it feel like a drop
@@ -876,6 +915,9 @@
     if (stepArrays.hatClosed.includes(stepIdx)) hatClosedSynth.triggerAttackRelease("32n", time, 0.55);
     if (stepArrays.hatOpen.includes(stepIdx)) hatOpenSynth.triggerAttackRelease("8n", time, 0.6);
     if (isDrop && RIDE_STEPS.includes(stepIdx)) rideSynth.triggerAttackRelease("16n", time, 0.3);
+    if (stepArrays.perc && stepArrays.perc.includes(stepIdx)){
+      percSynth.triggerAttackRelease(stepIdx % 4 === 3 ? "G4" : "D4", "32n", time, 0.8);
+    }
   }
 
   let currentDrumIndex = 0;
@@ -1317,17 +1359,20 @@
   function ensureLead(){
     if (leadSynth) return leadSynth;
     const fx = ensureEffectsChain();
-    leadDelay = new Tone.FeedbackDelay("8n.", 0.4);
+    leadDelay = new Tone.FeedbackDelay("8n.", 0.32);
     leadDelay.wet.value = 1;
     leadDelay.connect(fx);
     leadSynth = new Tone.PolySynth(Tone.MonoSynth, {
       maxPolyphony: 4, // it's a single melodic line — only release tails ever overlap
       oscillator: { type: "fatsawtooth", count: 2, spread: 20 },
       envelope: { attack: 0.015, decay: 0.2, sustain: 0.5, release: 0.4 },
-      filterEnvelope: { attack: 0.02, decay: 0.3, sustain: 0.4, baseFrequency: 500, octaves: 3.5 },
+      // Darker than it used to be (500 Hz + 3.5 octaves opened up to ~5.6 kHz
+      // on every note, which read as shrill): now it peaks around 1.7 kHz,
+      // a round lead that sits inside the mix instead of poking out of it.
+      filterEnvelope: { attack: 0.02, decay: 0.35, sustain: 0.35, baseFrequency: 360, octaves: 2.2 },
       portamento: 0.03,
     });
-    leadSynth.volume.value = -5;
+    leadSynth.volume.value = -6;
     leadSynth.connect(fx);
     leadSynth.connect(leadDelay);
     return leadSynth;
@@ -1508,6 +1553,16 @@
       drum: 9, stab: [0,3,6,8,10,12,14], stabLen: "16n", bass: [2,6,10,14], sub: true },
     { name: "Campanitas",  emoji: "🔔", vibe: "Para los más chicos",   bpm: 112, key: 2,  prog: [0,3,5,4], sound: "bells",
       drum: 7, stab: [0,4,8,12], stabLen: "8n", bass: [2,6,10,14], sub: true },
+    // House: groove over explosion. Swing on the 16ths, 7th/9th chords,
+    // sparse off-beat stabs and a bass that rolls instead of pumping.
+    { name: "Groove Club", emoji: "🕺", vibe: "Tech house con swing",  bpm: 125, key: 2,  prog: [0,0,0,6], sound: "organ",
+      drum: 10, stab: [3,10], stabLen: "16n", bass: [2,3,6,10,11,14], sub: false, swing: 0.18, voicing: 7, groove: true },
+    { name: "Bajo Rodante", emoji: "🌀", vibe: "Tech house, bajo que no para", bpm: 126, key: 5, prog: [0,0,3,3], sound: "pluck",
+      drum: 11, stab: [6,14], stabLen: "16n", bass: [2,3,6,7,10,11,14,15], sub: false, swing: 0.12, voicing: 7, groove: true },
+    { name: "Noche Deep",  emoji: "🌙", vibe: "Deep house, acordes cálidos", bpm: 120, key: 0, prog: [0,3,0,3], sound: "keys",
+      drum: 12, stab: [0,3,10], stabLen: "8n", bass: [0,6,10], sub: false, swing: 0.14, voicing: 9, groove: true },
+    { name: "Terraza",     emoji: "🍹", vibe: "Deep house para el sol",  bpm: 122, key: 9,  prog: [5,6,0,0], sound: "keys",
+      drum: 12, stab: [0,6,12], stabLen: "8n", bass: [2,6,10,14], sub: true, swing: 0.1, voicing: 7, groove: true },
   ];
 
   // Arrangement in bars: the intro plays once, then build/drop/breakdown loop.
@@ -1531,19 +1586,39 @@
     }
   }
 
-  // Triads (plus octave) rather than the 7th chords the free mode uses: stabs
-  // and plucks sound cleaner and more "EDM" without the jazzy 7th on top.
+  // EDM drops use triads (plus octave): stabs and plucks sound cleaner without
+  // the jazzy 7th on top. House drops ask for it: voicing 7 adds the 7th,
+  // voicing 9 swaps the 5th for the 9th (the smooth deep-house m9 sound).
   function songChord(song, degree){
     const d = DEGREES[degree];
     const pc = (song.key + SCALE_OFFSETS[degree]) % 12;
     let root = 48 + pc; if (root < 55) root += 12; // stab root lands in G3..F#4
-    const third = d.intervals[1], fifth = d.intervals[2];
-    const tones = [root, root + third, root + fifth, root + 12];
-    // 7 rungs over two octaves for the right-hand lead: every one is a chord tone.
-    const ladder = [root, root + third, root + fifth, root + 12, root + 12 + third, root + 12 + fifth, root + 24];
+    const [, third, fifth, seventh] = d.intervals;
+    let tones, name, chordPcs;
+    if (song.voicing === 9){
+      tones = [root, root + third, root + seventh, root + 14];
+      name = NOTE_NAMES[pc] + d.suffix.replace("7", "9");
+      chordPcs = [0, third, seventh, 14];
+    } else if (song.voicing === 7){
+      tones = [root, root + third, root + fifth, root + seventh];
+      name = NOTE_NAMES[pc] + d.suffix;
+      chordPcs = [0, third, fifth, seventh];
+    } else {
+      tones = [root, root + third, root + fifth, root + 12];
+      name = NOTE_NAMES[pc] + (fifth === 6 ? "dim" : (third === 3 ? "m" : ""));
+      chordPcs = [0, third, fifth];
+    }
+    // Rungs for the right-hand lead: only chord tones, stacked upward. The 7
+    // lanes use the first 7; arpeggio and chord styles reach a few rungs past.
+    // They start from the chord root between C#3 and C4, so the top rung
+    // lands around C#5-C6: high enough to sing over the chords, never shrill.
+    const ladderRoot = root > 60 ? root - 12 : root;
+    const ladder = [];
+    for (let oct = 0; ladder.length < 10; oct++){
+      for (const off of chordPcs){ if (off < 12 && ladder.length < 10) ladder.push(ladderRoot + 12 * oct + off); }
+    }
     let bass = 36 + pc; if (bass > 43) bass -= 12;
-    const quality = fifth === 6 ? "dim" : (third === 3 ? "m" : "");
-    return { name: NOTE_NAMES[pc] + quality, tones, ladder, bass, bassName: midiToNoteName(bass) };
+    return { name, tones, ladder, bass, bassName: midiToNoteName(bass) };
   }
 
   let bassSynth = null;
@@ -1570,7 +1645,23 @@
   let songSectionName = null;
 
   // Right hand's lead, written by processLandmarks, read by songTick.
-  const leadState = { present: false, fist: false, y: 0.5, speed: 0, lane: -1 };
+  const leadState = { present: false, style: "melody", pendingStyle: null, pendingSince: 0, y: 0.5, speed: 0, lane: -1 };
+
+  // The right hand's playing style is picked by how many fingers are up (the
+  // thumb is ignored: it's the least reliable one to detect). Every style only
+  // uses notes of the chord that's sounding, so switching styles mid-drop
+  // changes the part without ever making it sound wrong.
+  const LEAD_STYLES = {
+    silence: { icon: "✊", label: "Silencio" },
+    long:    { icon: "☝️", label: "Notas largas" },
+    arp:     { icon: "✌️", label: "Arpegio" },
+    chords:  { icon: "🎹", label: "Acordes" },
+    melody:  { icon: "✋", label: "Melodía" },
+  };
+  const STYLE_BY_FINGERS = ["silence", "long", "arp", "chords", "melody"];
+  const STYLE_HOLD_MS = 160; // a style has to hold this long, so moving the hand doesn't flicker it
+  const LEAD_ARP_RUN = [0, 1, 2, 3, 2, 1, 2, 1];
+  const LEAD_CHORD_HITS = [0, 3, 6, 10, 12];
   let leadLastLane = -1;
   let leadFlash = 0;       // UI: >0 right after a lead note fired
   let leadPlayedLane = -1;
@@ -1589,17 +1680,38 @@
     return lane;
   }
 
-  function playLeadStep(time, s, chord){
-    if (!leadState.present || leadState.fist || leadState.lane < 0){ leadLastLane = -1; return; }
+  function playLeadStep(time, s, chord, step){
+    const style = leadState.style;
+    if (!leadState.present || style === "silence" || leadState.lane < 0){ leadLastLane = -1; return; }
     const lane = leadState.lane;
     const moving = leadState.speed > 0.25, fast = leadState.speed > 1.1;
-    let play;
-    if (s % 2 === 0) play = lane !== leadLastLane || moving || s % 4 === 0; // still hand = quarters, moving = 8ths
-    else play = fast;                                                        // fast hand = 16ths
-    if (!play) return;
-    try { leadSynth.triggerAttackRelease(midiToNoteName(chord.ladder[lane]), fast ? "16n" : "8n", time, 0.7); } catch(e){}
+    const note = i => midiToNoteName(chord.ladder[Math.max(0, Math.min(chord.ladder.length - 1, i))]);
+    let flashLane = lane;
+    try {
+      if (style === "melody"){
+        // Still hand = quarters, moving = 8ths, fast = 16ths.
+        const play = s % 2 === 0 ? (lane !== leadLastLane || moving || s % 4 === 0) : fast;
+        if (!play) return;
+        leadSynth.triggerAttackRelease(note(lane), fast ? "16n" : "8n", time, 0.7);
+      } else if (style === "long"){
+        // One held note per half bar, or right away (on the next 8th) when the hand changes rung.
+        const play = s % 8 === 0 || (s % 2 === 0 && lane !== leadLastLane);
+        if (!play) return;
+        leadSynth.triggerAttackRelease(note(lane), "2n", time, 0.6);
+      } else if (style === "arp"){
+        // Running 16ths up and down the chord, starting from the hand's rung.
+        const i = lane - 1 + LEAD_ARP_RUN[step % LEAD_ARP_RUN.length];
+        ensureInstrument().triggerAttackRelease(note(i), "16n", time, 0.5);
+        flashLane = Math.max(0, Math.min(LEAD_LANES - 1, i));
+      } else if (style === "chords"){
+        // Syncopated stabs of three stacked chord tones: the hand's height picks the inversion.
+        if (!LEAD_CHORD_HITS.includes(s)) return;
+        const base = Math.max(0, Math.min(7, lane - 1));
+        ensureInstrument().triggerAttackRelease([note(base), note(base + 1), note(base + 2)], "8n", time, 0.6);
+      }
+    } catch(e){ /* a dropped note is better than a stalled song */ }
     leadLastLane = lane;
-    Tone.Draw.schedule(() => { leadFlash = 1; leadPlayedLane = lane; }, time);
+    Tone.Draw.schedule(() => { leadFlash = 1; leadPlayedLane = flashLane; }, time);
   }
 
   function pump(time, depth){
@@ -1612,7 +1724,15 @@
 
   const ARP_ORDER = [0, 1, 2, 3, 2, 1];
 
+  // If the main thread stalls (MediaPipe on a slow phone), Tone runs the
+  // late ticks back to back and clamps their times to "now", so one synth can
+  // get two attacks at the same instant and throw. Losing a few notes of that
+  // one step is fine; an uncaught error in the Transport callback isn't.
   function songTick(time){
+    try { songTickInner(time); } catch(e){ console.warn("Paso de la canción con error:", e); }
+  }
+
+  function songTickInner(time){
     const song = SONGS[currentSongIndex];
     const step = songStep++;
     const bar = Math.floor(step / 16), s = step % 16;
@@ -1631,7 +1751,7 @@
       if (s === 0) try { padSynth.triggerAttackRelease(chord.tones.slice(0, 3), "1m", time, 0.9); } catch(e){}
       if (s % 2 === 0 && (sec.name === "breakdown" || sec.barIn >= 1)){
         const note = chord.tones[ARP_ORDER[(step / 2) % ARP_ORDER.length]];
-        try { inst.triggerAttackRelease(midiToNoteName(note + 12), "16n", time, 0.32); } catch(e){}
+        try { inst.triggerAttackRelease(midiToNoteName(note), "16n", time, 0.32); } catch(e){}
       }
       if (sec.name === "intro" && sec.barIn >= 2 && s % 4 === 2) hatClosedSynth.triggerAttackRelease("32n", time, 0.35);
     }
@@ -1655,7 +1775,7 @@
       const arp16 = sec.barIn >= 4;
       if (arp16 || s % 2 === 0){
         const note = chord.tones[ARP_ORDER[(arp16 ? step : step / 2) % ARP_ORDER.length]];
-        try { inst.triggerAttackRelease(midiToNoteName(note + 12), "16n", time, 0.3 + 0.5 * progress); } catch(e){}
+        try { inst.triggerAttackRelease(midiToNoteName(note), "16n", time, 0.3 + 0.5 * progress); } catch(e){}
       }
       if (sec.barIn < 6 && s % 4 === 0) kickSynth.triggerAttackRelease("C1", "8n", time);
       if (sec.barIn < 6 && s % 4 === 2) hatOpenSynth.triggerAttackRelease("8n", time, 0.45);
@@ -1680,9 +1800,17 @@
         try { inst.triggerAttackRelease(chord.tones.map(midiToNoteName), song.stabLen, time, 0.85); } catch(e){}
       }
       if (song.bass.includes(s)) bassSynth.triggerAttackRelease(chord.bassName, "16n", time, 0.9);
+      // Every time the drop comes back it brings something new, so the song
+      // keeps moving even if nobody changes anything: from the 2nd drop a soft
+      // off-beat counter-arpeggio, from the 3rd a 16th-note shaker too.
+      if (sec.cycle >= 1 && s % 2 === 1){
+        const n = chord.tones[ARP_ORDER[((step - 1) / 2) % ARP_ORDER.length]];
+        try { inst.triggerAttackRelease(midiToNoteName(n), "16n", time, 0.22); } catch(e){}
+      }
+      if (sec.cycle >= 2 && s % 2 === 1) rideSynth.triggerAttackRelease("32n", time, 0.18);
     }
 
-    playLeadStep(time, s, chord);
+    playLeadStep(time, s, chord, step);
   }
 
   // ---- Song UI: timeline, countdown, coach hints, drop celebration ----
@@ -1697,9 +1825,9 @@
   let confetti = [];
 
   const COACH = {
-    intro: ["🖐️ Mano derecha: subila y bajala para tocar la melodía", "🖐️ Mano derecha: movela más rápido para tocar más notas"],
+    intro: ["🖐️ Mano derecha: subila y bajala para tocar la melodía", "✌️ Probá con 2 dedos (arpegio), 3 (acordes) o 1 (notas largas)"],
     build: ["🌀 Mano izquierda: girá la muñeca para subir la tensión", "🌀 ¡Girá la izquierda! Se viene el drop"],
-    drop: ["☝️ Izquierda arriba = eco gigante", "👈 Izquierda al borde = stutter"],
+    drop: ["☝️ Izquierda arriba = eco gigante", "✌️ Cambiá los dedos de la derecha para variar la parte", "👈 Izquierda al borde = stutter", "🖐️ Derecha más rápido = más notas"],
     breakdown: ["😌 Respirá… se viene otra subida"],
   };
 
@@ -1749,7 +1877,8 @@
   function onDropHit(){
     dropFlash = 1;
     const perfect = lastHandsUp;
-    setCaption(perfect ? "¡PERFECTO!" : "¡DROP!", { big: true, gold: perfect, hideAfter: 2200 });
+    const n = sectionAtBar(Math.floor(songStep / 16)).cycle + 1;
+    setCaption(perfect ? "¡PERFECTO!" : n > 1 ? `¡DROP ${n}!` : "¡DROP!", { big: true, gold: perfect, hideAfter: 2200 });
     spawnConfetti(perfect ? 140 : 70);
   }
 
@@ -1809,6 +1938,8 @@
     Tone.Transport.stop();
     Tone.Transport.position = 0;
     Tone.Transport.bpm.value = song.bpm;
+    Tone.Transport.swingSubdivision = "16n";
+    Tone.Transport.swing = song.swing || 0; // the house drops shuffle; everything on the grid follows, stutter included
     echoDelay.delayTime.value = (60 / song.bpm) * 0.75; // dotted 8th at this song's tempo
     pumpGain.gain.cancelScheduledValues(0);
     pumpGain.gain.value = 1;
@@ -1832,6 +1963,7 @@
     if (pumpGain){ pumpGain.gain.cancelScheduledValues(0); pumpGain.gain.value = 1; }
     if (padSynth) padSynth.releaseAll();
     songPlaying = false;
+    Tone.Transport.swing = 0;
     songAuto.build = 0; songAuto.gap = false;
     songBarEl.style.display = "none";
     coachEl.textContent = "";
@@ -1919,7 +2051,8 @@
 
     const debugValues = [+thumbSpread.toFixed(2), ...ratios.map(r => +r.toFixed(2))];
 
-    return { total, angleDeg, ratios: debugValues, wristY: wrist.y, handScale: spineLen, palmCross };
+    const fourCount = [f_index, f_middle, f_ring, f_pinky].filter(Boolean).length;
+    return { total, fourCount, angleDeg, ratios: debugValues, wristY: wrist.y, handScale: spineLen, palmCross };
   }
 
   // Which physical hand does what is fixed by ON-SCREEN position, not by gesture
@@ -2100,7 +2233,7 @@
   let lastFxHandLm = null, lastChordHandLm = null;
 
   let prevLeadPos = null;
-  function updateLeadState(chordHand, totalFingers){
+  function updateLeadState(chordHand, chordInfo){
     if (!chordHand){
       leadState.present = false; leadState.lane = -1; leadState.speed = 0; prevLeadPos = null;
       return;
@@ -2114,7 +2247,9 @@
     }
     prevLeadPos = { x: palm.x, y: palm.y, t };
     leadState.present = true;
-    leadState.fist = totalFingers === 0;
+    const wanted = STYLE_BY_FINGERS[chordInfo.fourCount];
+    if (wanted !== leadState.pendingStyle){ leadState.pendingStyle = wanted; leadState.pendingSince = t; }
+    if (wanted !== leadState.style && t - leadState.pendingSince >= STYLE_HOLD_MS) leadState.style = wanted;
     leadState.y = palm.y;
     leadState.lane = leadLaneForY(palm.y, leadState.lane);
   }
@@ -2158,7 +2293,7 @@
 
     // Guided drops: the right hand is the lead (see playLeadStep), not chords.
     if (songMode){
-      updateLeadState(chordHand, totalFingers);
+      updateLeadState(chordHand, chordInfo);
       return;
     }
 
@@ -2316,7 +2451,7 @@
     const laneH = (bottom - top) / LEAD_LANES;
     for (let i = 0; i < LEAD_LANES; i++){
       const y = bottom - (i + 1) * laneH;
-      const active = i === leadState.lane && !leadState.fist;
+      const active = i === leadState.lane && leadState.style !== "silence";
       const flashing = i === leadPlayedLane && leadFlash > 0.05;
       ctx.fillStyle = flashing ? `rgba(122,245,196,${(0.5 + leadFlash * 0.5).toFixed(3)})`
         : active ? "rgba(255,207,86,.85)" : "rgba(34,26,61,.6)";
@@ -2326,12 +2461,23 @@
       drawLabel(name, x + w / 2, y + laneH / 2, lit ? "#0a0716" : "#fdf6ee", "center", !lit);
     }
     const palm = toView(lastChordHandLm[9]);
-    ctx.strokeStyle = leadState.fist ? "rgba(195,184,230,.6)" : "#ffcf56";
+    const silent = leadState.style === "silence";
+    ctx.strokeStyle = silent ? "rgba(195,184,230,.6)" : "#ffcf56";
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(palm.x * cw, palm.y * ch, 16 + leadFlash * 16, 0, Math.PI * 2);
     ctx.stroke();
-    if (leadState.fist) drawLabel("✊ silencio", palm.x * cw, palm.y * ch + 34, "#c3b8e6", "center");
+    const cur = LEAD_STYLES[leadState.style];
+    drawLabel(`${cur.icon} ${cur.label}`, palm.x * cw, palm.y * ch + 40, silent ? "#c3b8e6" : "#ffcf56", "center");
+
+    // Legend of the finger styles, next to the rungs, with the current one lit.
+    const legendX = x - 8, legendBottom = bottom;
+    STYLE_BY_FINGERS.slice().reverse().forEach((key, i) => {
+      const st = LEAD_STYLES[key];
+      const fingers = STYLE_BY_FINGERS.indexOf(key);
+      const text = `${st.label} · ${fingers === 0 ? "puño" : fingers === 4 ? "mano" : fingers + (fingers === 1 ? " dedo" : " dedos")}`;
+      drawLabel(text, legendX, legendBottom - i * 18, key === leadState.style ? "#ffcf56" : "rgba(253,246,238,.55)", "right");
+    });
     leadFlash *= Math.pow(0.82, k);
   }
 
@@ -2503,7 +2649,7 @@
     pendingDegree = null;
     updateChordState(-1);
     updateDropFx(null, false, null);
-    updateLeadState(null, 0);
+    updateLeadState(null, null);
     lastFxHandLm = lastChordHandLm = null;
     fxLevel.rot = fxLevel.lift = fxLevel.edge = 0;
     applyFx(16);
@@ -2580,7 +2726,7 @@
   function chooseFree(){
     songMode = false;
     stopSong();
-    updateLeadState(null, 0);
+    updateLeadState(null, null);
     updatePickerUI();
     startExperience();
   }
