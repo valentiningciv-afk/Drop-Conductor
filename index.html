@@ -267,7 +267,7 @@
       <div class="picker-card glass">
         <h1 class="pixel-text">Elegí tu drop</h1>
         <p>La canción avanza sola hacia el drop. Vos le das onda con las manos:
-          la <b>derecha</b> toca la melodía (siempre suena bien, y con los dedos cambiás el estilo), la <b>izquierda</b> maneja los efectos.</p>
+          la <b>derecha</b> maneja la energía (arriba explota, puño corta, un golpe hacia abajo pega un impacto), la <b>izquierda</b> maneja los efectos.</p>
         <div class="song-grid" id="songGrid"></div>
       </div>
     </div>
@@ -324,13 +324,12 @@
         <b>Drops guiados:</b> elegí un drop y la canción avanza sola
         (intro → subida → silencio → <b>DROP</b> → pausa → otra subida). Arriba
         ves en qué parte estás y cuánto falta para el drop.<br><br>
-        <b>Mano derecha = melodía.</b> Subila y bajala: cada altura es una nota
-        del acorde que está sonando, así que nunca desafina, y cae siempre a
-        tiempo. Quieta late en negras, moviéndola toca más rápido.<br>
-        Con los dedos cambiás el estilo en cualquier momento: <b>mano abierta</b> =
-        melodía, <b>2 dedos</b> = arpegio que corre, <b>3 dedos</b> = acordes,
-        <b>1 dedo</b> = notas largas, <b>puño</b> = silencio. Cada vez que vuelve el
-        drop se suma una capa nueva.<br><br>
+        <b>Mano derecha = energía.</b> No toca notas: maneja la fiesta, y todo cae a
+        tiempo. <b>Arriba</b> = euforia (más capas, hats a toda velocidad, platillos;
+        antes del drop trae el ritmo), <b>al medio</b> = la canción normal,
+        <b>abajo</b> = solo ritmo (batería y bajo). <b>Puño</b> = corte: queda solo la
+        batería, y al abrir la mano vuelve todo con un golpe. <b>Bajala de golpe</b> =
+        impacto (platillo + bombo grande + acorde) en la próxima corchea.<br><br>
         <b>Mano izquierda = efectos</b>, los tres a la vez:<br>
         ↻ <b>girá la muñeca</b> → tensión (filtro que sube + whoosh + distorsión).<br>
         ↑ <b>subila</b> por encima de la línea punteada → eco gigante y más reverb
@@ -545,6 +544,7 @@
   // the reverb through this gain, which the guided song ducks on every kick
   // during the drop. Drums bypass it, so the kick punches through the hole.
   let pumpGain = null;
+  let cutGain = null; // the right hand's fist: mutes everything melodic, drums keep going
   let sharedChorus = null; // one Chorus shared by the pad and the main synth instead of one each
 
   function ensureEffectsChain(){
@@ -554,7 +554,8 @@
       // Shorter decay than before (2.4s -> 1.8s): convolution-reverb cost scales
       // with tail length, and this was one of the biggest contributors to the
       // audio-thread stutter under load.
-      pumpGain = new Tone.Gain(1).connect(ensureMasterBus());
+      cutGain = new Tone.Gain(1).connect(ensureMasterBus());
+      pumpGain = new Tone.Gain(1).connect(cutGain);
       reverbNode = new Tone.Reverb({ decay: 1.8, wet: 0.18 }).connect(pumpGain);
       riserFilter.connect(distortionNode);
       distortionNode.connect(reverbNode);
@@ -797,7 +798,7 @@
   // Closed and open hats now each get their own synth, so they can never collide.
   let drumBus = null, kickSynth = null, snareSynth = null, clapSynth = null;
   let hatClosedSynth = null, hatOpenSynth = null;
-  let subSynth = null, rideSynth = null, percSynth = null;
+  let subSynth = null, rideSynth = null, percSynth = null, crashSynth = null;
   let impactNoise = null, impactKick = null;
   let snareFilter = null; // kept so the guided build can sweep the snare roll's pitch up
 
@@ -871,6 +872,14 @@
       envelope: { attack: 0.001, decay: 0.09, sustain: 0 },
     }).connect(drumBus);
     percSynth.volume.value = -9;
+
+    // Crash for the right hand's hits, the return from a cut and euphoria.
+    const crashFilter = new Tone.Filter(4500, "highpass").connect(drumBus);
+    crashSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 1.3, sustain: 0 },
+    }).connect(crashFilter);
+    crashSynth.volume.value = -9;
 
     // Impact hit: fires once at the very top of every drop section — a noise
     // "crash" through the SAME shared reverb (not a second one) plus a doubled
@@ -1644,75 +1653,36 @@
   let songCurrentChord = null;
   let songSectionName = null;
 
-  // Right hand's lead, written by processLandmarks, read by songTick.
-  const leadState = { present: false, style: "melody", pendingStyle: null, pendingSince: 0, y: 0.5, speed: 0, lane: -1 };
+  // Right hand = the party hand. It never plays notes of its own: everything
+  // it does switches or fires parts that are already written for the song,
+  // always landing on the beat, so it can't sound wrong.
+  //  - HEIGHT picks the energy: low = only the groove (drums + bass), middle
+  //    = the song as written, high = "euphoria" (extra layers on top).
+  //  - FIST cuts the music to drums only; opening the hand brings it back
+  //    with a hit, on the next beat.
+  //  - A quick DOWNWARD swing fires an impact (crash + big kick + chord) on
+  //    the next 8th note.
+  // Written by processLandmarks, read by songTick.
+  const partyState = { present: false, level: 1, pendingLevel: 1, pendingSince: 0, fist: false, fistSince: 0,
+    cut: false, hitPending: false, lastHitAt: 0, y: 0.5, vy: 0 };
+  const ENERGY_LEVELS = [
+    { icon: "🥁", label: "Solo ritmo" },
+    { icon: "🎶", label: "Normal" },
+    { icon: "🔥", label: "Euforia" },
+  ];
+  const ENERGY_HIGH_Y = 0.33; // palm above this line (0 = top of screen, about head height) = euphoria
+  const ENERGY_LOW_Y = 0.72;  // palm below this line (near the bottom edge) = only the groove
+  const ENERGY_HOLD_MS = 250; // a level must hold this long: a quick swing down is a hit, not a level change
+  const FIST_HOLD_MS = 150;
+  const HIT_SPEED = 1.8;      // downward palm speed (screen heights per second) that counts as a swing
+  const HIT_COOLDOWN_MS = 350;
 
-  // The right hand's playing style is picked by how many fingers are up (the
-  // thumb is ignored: it's the least reliable one to detect). Every style only
-  // uses notes of the chord that's sounding, so switching styles mid-drop
-  // changes the part without ever making it sound wrong.
-  const LEAD_STYLES = {
-    silence: { icon: "✊", label: "Silencio" },
-    long:    { icon: "☝️", label: "Notas largas" },
-    arp:     { icon: "✌️", label: "Arpegio" },
-    chords:  { icon: "🎹", label: "Acordes" },
-    melody:  { icon: "✋", label: "Melodía" },
-  };
-  const STYLE_BY_FINGERS = ["silence", "long", "arp", "chords", "melody"];
-  const STYLE_HOLD_MS = 160; // a style has to hold this long, so moving the hand doesn't flicker it
-  const LEAD_ARP_RUN = [0, 1, 2, 3, 2, 1, 2, 1];
-  const LEAD_CHORD_HITS = [0, 3, 6, 10, 12];
-  let leadLastLane = -1;
-  let leadFlash = 0;       // UI: >0 right after a lead note fired
-  let leadPlayedLane = -1;
-
-  const LEAD_TOP_Y = 0.15, LEAD_BOTTOM_Y = 0.85; // palm height on screen mapped onto the 7 rungs
-  const LEAD_LANES = 7;
-  function leadLaneForY(y, prevLane){
-    const norm = clamp01((LEAD_BOTTOM_Y - y) / (LEAD_BOTTOM_Y - LEAD_TOP_Y));
-    let lane = Math.min(LEAD_LANES - 1, Math.floor(norm * LEAD_LANES));
-    // Hysteresis: stay on the previous rung until the palm is clearly past its
-    // edge, so a hand hovering on a boundary doesn't flip between two notes.
-    if (prevLane >= 0 && lane !== prevLane){
-      const lo = prevLane / LEAD_LANES - 0.03, hi = (prevLane + 1) / LEAD_LANES + 0.03;
-      if (norm > lo && norm < hi) lane = prevLane;
-    }
-    return lane;
-  }
-
-  function playLeadStep(time, s, chord, step){
-    const style = leadState.style;
-    if (!leadState.present || style === "silence" || leadState.lane < 0){ leadLastLane = -1; return; }
-    const lane = leadState.lane;
-    const moving = leadState.speed > 0.25, fast = leadState.speed > 1.1;
-    const note = i => midiToNoteName(chord.ladder[Math.max(0, Math.min(chord.ladder.length - 1, i))]);
-    let flashLane = lane;
-    try {
-      if (style === "melody"){
-        // Still hand = quarters, moving = 8ths, fast = 16ths.
-        const play = s % 2 === 0 ? (lane !== leadLastLane || moving || s % 4 === 0) : fast;
-        if (!play) return;
-        leadSynth.triggerAttackRelease(note(lane), fast ? "16n" : "8n", time, 0.7);
-      } else if (style === "long"){
-        // One held note per half bar, or right away (on the next 8th) when the hand changes rung.
-        const play = s % 8 === 0 || (s % 2 === 0 && lane !== leadLastLane);
-        if (!play) return;
-        leadSynth.triggerAttackRelease(note(lane), "2n", time, 0.6);
-      } else if (style === "arp"){
-        // Running 16ths up and down the chord, starting from the hand's rung.
-        const i = lane - 1 + LEAD_ARP_RUN[step % LEAD_ARP_RUN.length];
-        ensureInstrument().triggerAttackRelease(note(i), "16n", time, 0.5);
-        flashLane = Math.max(0, Math.min(LEAD_LANES - 1, i));
-      } else if (style === "chords"){
-        // Syncopated stabs of three stacked chord tones: the hand's height picks the inversion.
-        if (!LEAD_CHORD_HITS.includes(s)) return;
-        const base = Math.max(0, Math.min(7, lane - 1));
-        ensureInstrument().triggerAttackRelease([note(base), note(base + 1), note(base + 2)], "8n", time, 0.6);
-      }
-    } catch(e){ /* a dropped note is better than a stalled song */ }
-    leadLastLane = lane;
-    Tone.Draw.schedule(() => { leadFlash = 1; leadPlayedLane = flashLane; }, time);
-  }
+  // What the song is actually using right now: levels and the cut only change
+  // on a beat, so every transition lands in time no matter when the hand moved.
+  let activeEnergy = 1, activeCut = false;
+  let hitFlash = 0, cutFlash = 0; // UI
+  let euphoriaStep = 0;
+  let lastCutChangeStep = -1;
 
   function pump(time, depth){
     const beat = 60 / Tone.Transport.bpm.value;
@@ -1739,9 +1709,45 @@
     const sec = sectionAtBar(bar);
     const chord = songChord(song, song.prog[bar % song.prog.length]);
     const inst = ensureInstrument();
+    const dropStart = sec.name === "drop" && sec.barIn === 0 && s === 0;
+    const inGap = sec.name === "build" && sec.barIn === SECTIONS.build.bars - 1 && s >= 12;
 
     if (s === 0) Tone.Draw.schedule(() => onSongBar(sec, chord), time);
     if (s % 4 === 0) Tone.Draw.schedule(() => onSongBeat(sec, s / 4), time);
+
+    // ---- Right hand, applied on the beat ----
+    if (s % 4 === 0){
+      activeEnergy = partyState.present ? partyState.level : 1;
+      const wantCut = partyState.present && partyState.cut && !inGap;
+      if (wantCut !== activeCut){
+        activeCut = wantCut;
+        const g = cutGain.gain;
+        g.cancelScheduledValues(time);
+        g.setValueAtTime(g.getValueAtTime(time), time);
+        g.linearRampToValueAtTime(wantCut ? 0 : 1, time + 0.02);
+        if (!wantCut && !dropStart){
+          // Coming back from the cut is a moment: crash + boom + the chord, right on the beat.
+          crashSynth.triggerAttackRelease("2n", time, 0.9);
+          impactKick.triggerAttackRelease("C1", "4n", time);
+          try { inst.triggerAttackRelease(chord.tones.map(midiToNoteName), "8n", time, 0.9); } catch(e){}
+        }
+        lastCutChangeStep = step;
+        Tone.Draw.schedule(() => { cutFlash = 1; }, time);
+      }
+    }
+    const energy = activeEnergy;
+    const accentFired = s % 4 === 0 && lastCutChangeStep === step && !activeCut;
+    // Swing-down hits land on the next 8th (never on the drop's own downbeat,
+    // which already has its impact).
+    let hitNow = false;
+    if (partyState.hitPending && s % 2 === 0 && !dropStart && !accentFired){
+      partyState.hitPending = false;
+      hitNow = true;
+      crashSynth.triggerAttackRelease("2n", time, 1);
+      impactKick.triggerAttackRelease("C1", "4n", time);
+      if (!activeCut && !inGap) try { inst.triggerAttackRelease(chord.tones.map(midiToNoteName), "8n", time, 0.9); } catch(e){}
+      Tone.Draw.schedule(() => { hitFlash = 1; spawnConfetti(24); }, time);
+    }
 
     if (sec.name === "intro" || sec.name === "breakdown"){
       if (sec.name === "breakdown" && sec.barIn === 0 && s === 0){
@@ -1749,18 +1755,23 @@
         pumpGain.gain.setValueAtTime(1, time);
       }
       if (s === 0) try { padSynth.triggerAttackRelease(chord.tones.slice(0, 3), "1m", time, 0.9); } catch(e){}
-      if (s % 2 === 0 && (sec.name === "breakdown" || sec.barIn >= 1)){
+      if (energy >= 1 && s % 2 === 0 && (sec.name === "breakdown" || sec.barIn >= 1)){
         const note = chord.tones[ARP_ORDER[(step / 2) % ARP_ORDER.length]];
-        try { inst.triggerAttackRelease(midiToNoteName(note), "16n", time, 0.32); } catch(e){}
+        try { inst.triggerAttackRelease(midiToNoteName(note), "16n", time, 0.3); } catch(e){}
       }
-      if (sec.name === "intro" && sec.barIn >= 2 && s % 4 === 2) hatClosedSynth.triggerAttackRelease("32n", time, 0.35);
+      if (energy >= 1 && sec.name === "intro" && sec.barIn >= 2 && s % 4 === 2) hatClosedSynth.triggerAttackRelease("32n", time, 0.35);
+      // Euphoria before the drop: bring the beat in early.
+      if (energy === 2){
+        if (s % 4 === 0) kickSynth.triggerAttackRelease("C1", "8n", time);
+        if (s % 4 === 2) hatOpenSynth.triggerAttackRelease("8n", time, 0.45);
+        if (s === 4 || s === 12) clapSynth.triggerAttackRelease("16n", time);
+      }
     }
     else if (sec.name === "build"){
       const total = SECTIONS.build.bars * 16;
       const progress = (sec.barIn * 16 + s) / total;
-      const lastBar = sec.barIn === SECTIONS.build.bars - 1;
       if (s === 0 || s === 8) Tone.Draw.schedule(() => { songAuto.build = progress; songAuto.gap = false; }, time);
-      if (lastBar && s >= 12){
+      if (inGap){
         // The gap: one beat of near-silence right before the drop.
         if (s === 12){
           const g = pumpGain.gain;
@@ -1773,21 +1784,24 @@
       }
       if (s === 0 && sec.barIn < 6) try { padSynth.triggerAttackRelease(chord.tones.slice(0, 3), "1m", time, 0.9); } catch(e){}
       const arp16 = sec.barIn >= 4;
-      if (arp16 || s % 2 === 0){
+      if (energy >= 1 && (arp16 || s % 2 === 0)){
         const note = chord.tones[ARP_ORDER[(arp16 ? step : step / 2) % ARP_ORDER.length]];
-        try { inst.triggerAttackRelease(midiToNoteName(note), "16n", time, 0.3 + 0.5 * progress); } catch(e){}
+        try { inst.triggerAttackRelease(midiToNoteName(note), "16n", time, 0.3 + 0.45 * progress); } catch(e){}
       }
       if (sec.barIn < 6 && s % 4 === 0) kickSynth.triggerAttackRelease("C1", "8n", time);
       if (sec.barIn < 6 && s % 4 === 2) hatOpenSynth.triggerAttackRelease("8n", time, 0.45);
       // Snare roll that speeds up: quarters -> 8ths -> 16ths, rising in pitch.
-      const rollEvery = sec.barIn < 2 ? 0 : sec.barIn < 4 ? 4 : sec.barIn < 6 ? 2 : 1;
+      // Euphoria runs it one notch denser and doubles it with the clap.
+      const baseEvery = sec.barIn < 2 ? 0 : sec.barIn < 4 ? 4 : sec.barIn < 6 ? 2 : 1;
+      const rollEvery = energy === 2 ? (baseEvery === 0 ? 4 : Math.max(1, baseEvery / 2)) : baseEvery;
       if (rollEvery && s % rollEvery === 0){
         snareFilter.frequency.setValueAtTime(1000 + 4000 * progress, time);
         snareSynth.triggerAttackRelease("32n", time, 0.35 + 0.65 * progress);
+        if (energy === 2 && s % 2 === 0) clapSynth.triggerAttackRelease("32n", time, 0.5 + 0.4 * progress);
       }
     }
     else if (sec.name === "drop"){
-      if (sec.barIn === 0 && s === 0){
+      if (dropStart){
         snareFilter.frequency.setValueAtTime(1700, time);
         triggerDropImpact(time, chord.bassName, !song.sub);
         Tone.Draw.schedule(() => { songAuto.build = 0; songAuto.gap = false; onDropHit(); }, time);
@@ -1795,22 +1809,28 @@
       const pattern = DRUM_PATTERNS[song.drum];
       const fillBar = sec.barIn % 8 === 7;
       triggerDrumStep(fillBar ? deriveFill(pattern) : pattern, s, time, true, song.sub ? chord.bassName : null);
-      if (s % 4 === 0) pump(time, 0.3);
-      if (song.stab.includes(s)){
+      if (s % 4 === 0) pump(time, energy === 2 ? 0.2 : 0.3);
+      // "Solo ritmo" drops the chords; the bass and drums keep the groove.
+      if (energy >= 1 && song.stab.includes(s)){
         try { inst.triggerAttackRelease(chord.tones.map(midiToNoteName), song.stabLen, time, 0.85); } catch(e){}
       }
       if (song.bass.includes(s)) bassSynth.triggerAttackRelease(chord.bassName, "16n", time, 0.9);
-      // Every time the drop comes back it brings something new, so the song
-      // keeps moving even if nobody changes anything: from the 2nd drop a soft
-      // off-beat counter-arpeggio, from the 3rd a 16th-note shaker too.
-      if (sec.cycle >= 1 && s % 2 === 1){
-        const n = chord.tones[ARP_ORDER[((step - 1) / 2) % ARP_ORDER.length]];
-        try { inst.triggerAttackRelease(midiToNoteName(n), "16n", time, 0.22); } catch(e){}
+      if (energy === 2){
+        // Euphoria: a held chord pad underneath, rolling 16th hats with accents,
+        // a clap on every beat, a crash every bar and a soft off-beat arpeggio.
+        if (s === 0) try { padSynth.triggerAttackRelease(chord.tones.slice(0, 3), "1m", time, 0.8); } catch(e){}
+        if (!pattern.hatClosed.includes(s)) hatClosedSynth.triggerAttackRelease("32n", time, s % 2 ? 0.45 : 0.65);
+        if ((s === 0 || s === 8) && !pattern.clap.includes(s) && !pattern.snare.includes(s)) clapSynth.triggerAttackRelease("16n", time, 0.8);
+        if (s === 0 && !dropStart && !hitNow && !accentFired) crashSynth.triggerAttackRelease("2n", time, 0.55);
+        if (s % 2 === 1){
+          const n = chord.tones[ARP_ORDER[euphoriaStep++ % ARP_ORDER.length]];
+          try { inst.triggerAttackRelease(midiToNoteName(n), "16n", time, 0.25); } catch(e){}
+        }
       }
+      // Each time the drop comes back it brings something new on its own:
+      // from the 3rd drop, a 16th-note shaker.
       if (sec.cycle >= 2 && s % 2 === 1) rideSynth.triggerAttackRelease("32n", time, 0.18);
     }
-
-    playLeadStep(time, s, chord, step);
   }
 
   // ---- Song UI: timeline, countdown, coach hints, drop celebration ----
@@ -1825,9 +1845,9 @@
   let confetti = [];
 
   const COACH = {
-    intro: ["🖐️ Mano derecha: subila y bajala para tocar la melodía", "✌️ Probá con 2 dedos (arpegio), 3 (acordes) o 1 (notas largas)"],
+    intro: ["🙌 Mano derecha bien arriba: ¡trae el ritmo antes de tiempo!", "👇 Bajá la derecha de golpe = ¡impacto!"],
     build: ["🌀 Mano izquierda: girá la muñeca para subir la tensión", "🌀 ¡Girá la izquierda! Se viene el drop"],
-    drop: ["☝️ Izquierda arriba = eco gigante", "✌️ Cambiá los dedos de la derecha para variar la parte", "👈 Izquierda al borde = stutter", "🖐️ Derecha más rápido = más notas"],
+    drop: ["🔥 Derecha arriba = ¡euforia!", "✊ Cerrá el puño derecho para cortar… y abrila para que vuelva", "☝️ Izquierda arriba = eco gigante", "👇 Derecha abajo de golpe = impacto", "👈 Izquierda al borde = stutter", "🥁 Derecha abajo = solo ritmo"],
     breakdown: ["😌 Respirá… se viene otra subida"],
   };
 
@@ -1932,7 +1952,7 @@
     soundSelect.value = song.sound;
     rootSelect.value = String(song.key);
     renderScaleTable();
-    ensureInstrument(); ensurePad(); ensureLead(); ensureDrumKit(); ensureBass(); ensureGateLoop();
+    ensureInstrument(); ensurePad(); ensureDrumKit(); ensureBass(); ensureGateLoop();
     stopSongLoop();
     if (padSynth) padSynth.releaseAll();
     Tone.Transport.stop();
@@ -1944,6 +1964,9 @@
     pumpGain.gain.cancelScheduledValues(0);
     pumpGain.gain.value = 1;
     songStep = 0; songSectionName = null;
+    activeEnergy = 1; activeCut = false; euphoriaStep = 0; lastCutChangeStep = -1;
+    cutGain.gain.cancelScheduledValues(0);
+    cutGain.gain.value = 1;
     songAuto.build = 0; songAuto.gap = false;
     songLoop = new Tone.Loop(songTick, "16n").start(0);
     Tone.Transport.start("+0.05");
@@ -1961,6 +1984,8 @@
     stopSongLoop();
     Tone.Transport.stop();
     if (pumpGain){ pumpGain.gain.cancelScheduledValues(0); pumpGain.gain.value = 1; }
+    if (cutGain){ cutGain.gain.cancelScheduledValues(0); cutGain.gain.value = 1; }
+    activeEnergy = 1; activeCut = false;
     if (padSynth) padSynth.releaseAll();
     songPlaying = false;
     Tone.Transport.swing = 0;
@@ -2232,26 +2257,43 @@
   }
   let lastFxHandLm = null, lastChordHandLm = null;
 
-  let prevLeadPos = null;
-  function updateLeadState(chordHand, chordInfo){
+  let prevPartyPos = null;
+  function updatePartyState(chordHand, chordInfo){
+    const t = performance.now();
     if (!chordHand){
-      leadState.present = false; leadState.lane = -1; leadState.speed = 0; prevLeadPos = null;
+      partyState.present = false; partyState.fist = false; partyState.cut = false; partyState.vy = 0;
+      partyState.level = partyState.pendingLevel = 1;
+      prevPartyPos = null;
       return;
     }
     const palm = toView(chordHand[9]); // middle-finger knuckle: steadier than the wrist, and it's where the hand "is"
-    const t = performance.now();
-    if (prevLeadPos){
-      const dt = Math.max(1, t - prevLeadPos.t) / 1000;
-      const v = Math.hypot(palm.x - prevLeadPos.x, palm.y - prevLeadPos.y) / dt;
-      leadState.speed += (v - leadState.speed) * 0.5;
+    if (prevPartyPos){
+      const dt = Math.max(1, t - prevPartyPos.t) / 1000;
+      const vy = (palm.y - prevPartyPos.y) / dt; // + = moving down the screen
+      partyState.vy += (vy - partyState.vy) * 0.6;
+      if (partyState.vy > HIT_SPEED && t - partyState.lastHitAt > HIT_COOLDOWN_MS){
+        partyState.hitPending = true;
+        partyState.lastHitAt = t;
+      }
     }
-    prevLeadPos = { x: palm.x, y: palm.y, t };
-    leadState.present = true;
-    const wanted = STYLE_BY_FINGERS[chordInfo.fourCount];
-    if (wanted !== leadState.pendingStyle){ leadState.pendingStyle = wanted; leadState.pendingSince = t; }
-    if (wanted !== leadState.style && t - leadState.pendingSince >= STYLE_HOLD_MS) leadState.style = wanted;
-    leadState.y = palm.y;
-    leadState.lane = leadLaneForY(palm.y, leadState.lane);
+    prevPartyPos = { y: palm.y, t };
+    partyState.present = true;
+    partyState.y = palm.y;
+
+    // Level from height, with a little hysteresis around the two lines.
+    const cur = partyState.level;
+    let wanted = palm.y < ENERGY_HIGH_Y ? 2 : palm.y > ENERGY_LOW_Y ? 0 : 1;
+    if (cur === 2 && palm.y < ENERGY_HIGH_Y + 0.04) wanted = 2;
+    if (cur === 0 && palm.y > ENERGY_LOW_Y - 0.04) wanted = 0;
+    // A swing down is a hit, not a change of level: ignore height while it's moving fast.
+    if (Math.abs(partyState.vy) > HIT_SPEED * 0.6) wanted = partyState.pendingLevel;
+    if (wanted !== partyState.pendingLevel){ partyState.pendingLevel = wanted; partyState.pendingSince = t; }
+    if (wanted !== cur && t - partyState.pendingSince >= ENERGY_HOLD_MS) partyState.level = wanted;
+
+    // Fist = cut (thumb ignored: it's the least reliable finger to read).
+    const fist = chordInfo.fourCount === 0;
+    if (fist !== partyState.fist){ partyState.fist = fist; partyState.fistSince = t; }
+    if (partyState.cut !== fist && t - partyState.fistSince >= FIST_HOLD_MS) partyState.cut = fist;
   }
 
   function processLandmarks(handsArray){
@@ -2291,9 +2333,9 @@
     lastFxHandLm = fxHand;
     lastChordHandLm = chordHand;
 
-    // Guided drops: the right hand is the lead (see playLeadStep), not chords.
+    // Guided drops: the right hand is the party hand (see partyState), not chords.
     if (songMode){
-      updateLeadState(chordHand, chordInfo);
+      updatePartyState(chordHand, chordInfo);
       return;
     }
 
@@ -2392,7 +2434,7 @@
     }
 
     if (cameraActive && lastFxHandLm) drawFxGuides(cw, ch);
-    if (songMode && songPlaying && lastChordHandLm && songCurrentChord) drawLeadLanes(cw, ch, k);
+    if (songMode && songPlaying && lastChordHandLm) drawPartyMeter(cw, ch, k);
   }
 
   function drawLabel(text, x, y, color, align = "left", outline = true){
@@ -2442,43 +2484,54 @@
     });
   }
 
-  // Right hand in a guided drop: the 7 rungs of the lead, with the notes of
-  // the chord that's sounding right now, so "higher hand = higher note" is
-  // obvious at a glance.
-  function drawLeadLanes(cw, ch, k){
-    const w = 50, x = cw - w - 10;
-    const top = LEAD_TOP_Y * ch, bottom = LEAD_BOTTOM_Y * ch;
-    const laneH = (bottom - top) / LEAD_LANES;
-    for (let i = 0; i < LEAD_LANES; i++){
-      const y = bottom - (i + 1) * laneH;
-      const active = i === leadState.lane && leadState.style !== "silence";
-      const flashing = i === leadPlayedLane && leadFlash > 0.05;
-      ctx.fillStyle = flashing ? `rgba(122,245,196,${(0.5 + leadFlash * 0.5).toFixed(3)})`
-        : active ? "rgba(255,207,86,.85)" : "rgba(34,26,61,.6)";
-      ctx.fillRect(x, y + 2, w, laneH - 4);
-      const name = midiToNoteName(songCurrentChord.ladder[i]).replace(/-?\d+$/, "");
-      const lit = active || flashing;
-      drawLabel(name, x + w / 2, y + laneH / 2, lit ? "#0a0716" : "#fdf6ee", "center", !lit);
+  // Right hand in a guided drop: the energy meter (three zones, the same
+  // heights the hand is judged by), the hand's current state, and the three
+  // things it can do, so each gesture is obvious at a glance.
+  const ENERGY_COLORS = ["255,207,86", "107,231,255", "255,111,165"]; // ritmo, normal, euforia
+  function drawPartyMeter(cw, ch, k){
+    const w = 54, x = cw - w - 10;
+    const hiY = ENERGY_HIGH_Y * ch, loY = ENERGY_LOW_Y * ch;
+    const zones = [[loY, ch * 0.86], [hiY, loY], [Math.max(ch * 0.12, 180), hiY]]; // [top, bottom] per level; top clears the song bar
+    zones.forEach(([top, bottom], lvl) => {
+      const on = lvl === partyState.level && !partyState.cut;
+      ctx.fillStyle = `rgba(${ENERGY_COLORS[lvl]},${on ? 0.85 : 0.18})`;
+      ctx.fillRect(x, top + 2, w, bottom - top - 4);
+      const e = ENERGY_LEVELS[lvl];
+      ctx.font = "22px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(e.icon, x + w / 2, (top + bottom) / 2);
+      drawLabel(e.label, x - 8, (top + bottom) / 2, on ? `rgb(${ENERGY_COLORS[lvl]})` : "rgba(253,246,238,.6)", "right");
+    });
+    ctx.setLineDash([8, 8]);
+    ctx.lineWidth = 2;
+    for (const y of [hiY, loY]){
+      ctx.strokeStyle = "rgba(253,246,238,.35)";
+      ctx.beginPath(); ctx.moveTo(cw * 0.5, y); ctx.lineTo(x, y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    if (partyState.cut){
+      ctx.fillStyle = "rgba(10,7,22,.35)";
+      ctx.fillRect(0, 0, cw, ch);
     }
     const palm = toView(lastChordHandLm[9]);
-    const silent = leadState.style === "silence";
-    ctx.strokeStyle = silent ? "rgba(195,184,230,.6)" : "#ffcf56";
+    const px = palm.x * cw, py = palm.y * ch;
+    const lvlColor = partyState.cut ? "195,184,230" : ENERGY_COLORS[partyState.level];
+    ctx.strokeStyle = `rgb(${lvlColor})`;
     ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(palm.x * cw, palm.y * ch, 16 + leadFlash * 16, 0, Math.PI * 2);
-    ctx.stroke();
-    const cur = LEAD_STYLES[leadState.style];
-    drawLabel(`${cur.icon} ${cur.label}`, palm.x * cw, palm.y * ch + 40, silent ? "#c3b8e6" : "#ffcf56", "center");
+    ctx.beginPath(); ctx.arc(px, py, 18 + hitFlash * 26, 0, Math.PI * 2); ctx.stroke();
+    if (hitFlash > 0.05){
+      ctx.strokeStyle = `rgba(255,255,255,${hitFlash.toFixed(3)})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(px, py, 30 + (1 - hitFlash) * 60, 0, Math.PI * 2); ctx.stroke();
+    }
+    const state = partyState.cut ? "✊ Corte: solo batería" : `${ENERGY_LEVELS[partyState.level].icon} ${ENERGY_LEVELS[partyState.level].label}`;
+    drawLabel(state, px, py + 44, `rgb(${lvlColor})`, "center");
+    hitFlash *= Math.pow(0.85, k);
+    cutFlash *= Math.pow(0.85, k);
 
-    // Legend of the finger styles, next to the rungs, with the current one lit.
-    const legendX = x - 8, legendBottom = bottom;
-    STYLE_BY_FINGERS.slice().reverse().forEach((key, i) => {
-      const st = LEAD_STYLES[key];
-      const fingers = STYLE_BY_FINGERS.indexOf(key);
-      const text = `${st.label} · ${fingers === 0 ? "puño" : fingers === 4 ? "mano" : fingers + (fingers === 1 ? " dedo" : " dedos")}`;
-      drawLabel(text, legendX, legendBottom - i * 18, key === leadState.style ? "#ffcf56" : "rgba(253,246,238,.55)", "right");
-    });
-    leadFlash *= Math.pow(0.82, k);
+    // Legend only where there's room for it; on a phone the coach line teaches the same.
+    const legend = cw >= 600 ? ["↑↓ Subí o bajá = energía", "✊ Puño = corte", "👇 Bajala de golpe = impacto"] : [];
+    legend.forEach((t, i) => drawLabel(t, x + w, ch * 0.95 - (legend.length - 1 - i) * 18 + 6, "rgba(253,246,238,.7)", "right"));
   }
 
   // Detection is throttled independently of the (smooth, 60fps) draw loop below.
@@ -2649,7 +2702,7 @@
     pendingDegree = null;
     updateChordState(-1);
     updateDropFx(null, false, null);
-    updateLeadState(null, null);
+    updatePartyState(null, null);
     lastFxHandLm = lastChordHandLm = null;
     fxLevel.rot = fxLevel.lift = fxLevel.edge = 0;
     applyFx(16);
@@ -2726,7 +2779,7 @@
   function chooseFree(){
     songMode = false;
     stopSong();
-    updateLeadState(null, null);
+    updatePartyState(null, null);
     updatePickerUI();
     startExperience();
   }
@@ -2751,7 +2804,8 @@
   // synthetic hand landmarks and read back the effect levels.
   if (/[?&]debug\b/.test(location.search)){
     window.__dc = {
-      processLandmarks, fxLevel, fxTarget, songAuto, leadState, sectionAtBar, SONGS, viewMap,
+      processLandmarks, fxLevel, fxTarget, songAuto, partyState, sectionAtBar, SONGS, viewMap,
+      get activeEnergy(){ return activeEnergy; }, get activeCut(){ return activeCut; },
       get songStep(){ return songStep; },
       get master(){ return masterLimiter; },
     };
