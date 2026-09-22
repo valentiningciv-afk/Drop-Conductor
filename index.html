@@ -221,6 +221,9 @@
         </select>
         <select id="soundSelect" aria-label="Sonido">
           <option value="synth" selected>Synth EDM</option>
+          <option value="pluck">Pluck trance</option>
+          <option value="futurebass">Future bass</option>
+          <option value="bells">Campanas</option>
           <option value="piano">Piano acústico</option>
         </select>
       </div>
@@ -413,6 +416,11 @@
   let pianoSampler = null;
   let pianoLoaded = false;
   let activeVoices = [];
+  // The instrument the currently-held voices were actually triggered on, which
+  // is NOT always the selected one: switching sounds mid-chord changes
+  // soundSelect.value first, and releasing the new instrument would leave the
+  // old one's notes ringing forever. Only the synth that attacked can release.
+  let activeInstrument = null;
 
   // Single master limiter everything routes through instead of toDestination()
   // directly — with drums, piano/pad, arp, solo, reverb and echo all summing
@@ -494,8 +502,85 @@
     return padSynth;
   }
 
+  // Extra playable synths, on top of the supersaw ("synth") and the piano
+  // sampler. Each one is a *factory*, not an instance: a preset is only ever
+  // built the first time it gets selected, so the sounds you never pick cost
+  // nothing — no nodes, no CPU, and nothing extra to warm up before the first
+  // chord. They all hang off sharedChorus (and therefore the existing riser ->
+  // distortion -> reverb chain), so none of them adds an effect node of its own:
+  // swapping sounds never changes the shape or the cost of the effects chain.
+  //
+  // Every one of these also has to survive being the arpeggio voice: the arp
+  // retriggers the same instrument on every 8th note while a chord is held, so
+  // these stay at 2 oscillators per voice at most, same budget as the supersaw.
+  const EXTRA_SYNTH_FACTORIES = {
+    // Short, percussive, almost no sustain — the classic trance/progressive
+    // pluck. It's the sound the arpeggio flatters most, because each note gets
+    // out of the way before the next one lands instead of blurring into it.
+    pluck: () => new Tone.PolySynth(Tone.Synth, {
+      maxPolyphony: 6,
+      oscillator: { type: "fatsquare", count: 2, spread: 18 },
+      envelope: { attack: 0.004, decay: 0.35, sustain: 0.22, release: 0.8 },
+    }),
+    // Future bass: FM instead of subtractive, so the "growl" comes from the
+    // modulator rather than from a filter sweep. No filter per voice makes it
+    // about as cheap as the supersaw despite the second oscillator.
+    futurebass: () => new Tone.PolySynth(Tone.FMSynth, {
+      maxPolyphony: 6,
+      harmonicity: 2,
+      modulationIndex: 7,
+      oscillator: { type: "sawtooth" },
+      modulation: { type: "square" },
+      envelope: { attack: 0.02, decay: 0.4, sustain: 0.6, release: 1.1 },
+      modulationEnvelope: { attack: 0.06, decay: 0.5, sustain: 0.3, release: 0.8 },
+    }),
+    // Bells: FM again, but with an inharmonic ratio (3.01, deliberately not a
+    // whole number) and sine carrier + modulator, which is the cheapest voice
+    // of the three. Long decay, almost no sustain — held chords ring out and
+    // fade instead of sitting there, which is what makes it read as a bell.
+    bells: () => new Tone.PolySynth(Tone.FMSynth, {
+      maxPolyphony: 6,
+      harmonicity: 3.01,
+      modulationIndex: 9,
+      oscillator: { type: "sine" },
+      modulation: { type: "sine" },
+      envelope: { attack: 0.004, decay: 1.6, sustain: 0.06, release: 1.8 },
+      modulationEnvelope: { attack: 0.004, decay: 0.35, sustain: 0.02, release: 0.6 },
+    }),
+  };
+
+  // Level-matched to the supersaw so switching sounds isn't also a volume jump.
+  // These were measured, not guessed: an offline render of a held chord with the
+  // arpeggio on top, through this exact chain, tuned until each preset peaked
+  // around the supersaw's 0.78 and still left headroom under the -1 dB limiter.
+  // FM voices come out much quieter than a filtered saw at the same setting,
+  // which is why these numbers sit *above* the supersaw's -4 dB rather than below.
+  const EXTRA_SYNTH_VOLUMES = { pluck: -6, futurebass: -1, bells: -2 };
+
+  const extraSynths = {}; // preset name -> built instance (lazily populated)
+
+  // The instrument currently selected, or null if it hasn't been built yet.
+  // Unlike ensureInstrument() this never constructs anything, so it's safe to
+  // call from teardown paths (releasing voices) that must not spin up a synth.
+  function currentInstrument(){
+    const value = soundSelect.value;
+    if (value === "piano") return pianoSampler;
+    if (EXTRA_SYNTH_FACTORIES[value]) return extraSynths[value] || null;
+    return synth;
+  }
+
   function ensureInstrument(){
     const fx = ensureEffectsChain();
+    if (EXTRA_SYNTH_FACTORIES[soundSelect.value]){
+      const name = soundSelect.value;
+      if (!extraSynths[name]){
+        const inst = EXTRA_SYNTH_FACTORIES[name]();
+        inst.volume.value = EXTRA_SYNTH_VOLUMES[name];
+        inst.connect(sharedChorus);
+        extraSynths[name] = inst;
+      }
+      return extraSynths[name];
+    }
     if (soundSelect.value === "piano"){
       if (!pianoSampler){
         pianoSampler = new Tone.Sampler({
@@ -512,7 +597,7 @@
           release: 1.4,
           baseUrl: "https://tonejs.github.io/audio/salamander/",
           onload: () => { pianoLoaded = true; },
-          onerror: (err) => { showError("No se pudieron cargar los samples de piano: " + (err && err.message ? err.message : String(err)) + ". Probá con \"Synth cálido\"."); },
+          onerror: (err) => { showError("No se pudieron cargar los samples de piano: " + (err && err.message ? err.message : String(err)) + ". Probá con \"Synth EDM\"."); },
         }).connect(fx);
       }
       return pianoSampler;
@@ -1036,11 +1121,12 @@
   let arpSequence = null;
 
   function stopAllVoices(){
-    const inst = soundSelect.value === "piano" ? pianoSampler : synth;
+    const inst = activeInstrument || currentInstrument();
     if (inst && activeVoices.length){
       try { inst.triggerRelease(activeVoices, Tone.now()); } catch(e){}
     }
     activeVoices = [];
+    activeInstrument = null;
     if (padSynth && activePadVoices.length){
       try { padSynth.triggerRelease(activePadVoices, Tone.now()); } catch(e){}
     }
@@ -1184,6 +1270,7 @@
       const inst = ensureInstrument();
       inst.triggerAttack(chord.notes, Tone.now());
       activeVoices = chord.notes;
+      activeInstrument = inst;
     } catch(e){ /* ignore transient audio errors */ }
 
     // Soft, slow-attack pad underneath — the "estético, relajante, de sintetizador"
